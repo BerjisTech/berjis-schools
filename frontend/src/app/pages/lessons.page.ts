@@ -5,11 +5,6 @@ import { CommonModule } from '@angular/common';
   selector: 'app-lessons-page',
   standalone: true,
   imports: [CommonModule],
-  template: `
-    <div class="p-4">
-      <h2 class="mt-0 text-lg font-semibold">Lessons</h2>
-      <p>Coming soon: your in-progress and completed lessons.</p>
-    </div>
-  `
+  templateUrl: './lessons.page.html'
 })
 export class LessonsPage {}

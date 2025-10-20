@@ -7,205 +7,7 @@ import { urlFor } from '../../app/util';
   selector: 'app-become-tutor-page',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  template: `
-    <div class="p-5 max-w-xl">
-      <h2 class="mt-0 text-lg font-semibold">Apply to Become a Private Tutor</h2>
-      <div class="text-sm text-gray-600 mb-4">You can apply even if you already teach at a school.</div>
-
-      <div *ngIf="statusLine" class="mb-3" [ngClass]="{'text-blue-700': status==='pending', 'text-green-700': status==='approved', 'text-red-700': status==='rejected'}">{{ statusLine }}</div>
-
-      <div class="mb-4">
-        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div class="h-full bg-blue-600" [style.width.%]="progressPct"></div>
-        </div>
-        <div class="mt-1 text-xs text-gray-600">Progress: {{ progressPct }}%</div>
-      </div>
-
-      <nav class="flex flex-wrap gap-2 mb-4">
-        <button type="button" *ngFor="let s of steps; let i = index"
-                (click)="canGoTo(i) && (step=i)"
-                class="px-3 py-1 rounded border text-sm"
-                [class.opacity-50]="!canGoTo(i)" [disabled]="!canGoTo(i)"
-                [class.bg-blue-600]="i===step" [class.text-white]="i===step" [class.border-blue-600]="i===step">{{ s }}</button>
-      </nav>
-
-      <form class="space-y-6" (ngSubmit)="apply(false)">
-        <section class="space-y-3" *ngIf="step===0">
-          <h3 class="font-semibold">Personal Info</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(0).length">Required: {{ fieldsMissingForStep(0).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Full legal name</label>
-              <input [(ngModel)]="profile.legalName" name="legalName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Display name</label>
-              <input [(ngModel)]="profile.displayName" name="displayName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Email</label>
-              <input [(ngModel)]="profile.email" name="email" type="email" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Phone</label>
-              <input [(ngModel)]="profile.phone" name="phone" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Country</label>
-              <input [(ngModel)]="profile.country" name="country" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Languages</label>
-              <input [(ngModel)]="profile.languages" name="languages" placeholder="comma-separated" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Time zone</label>
-              <input [(ngModel)]="profile.timezone" name="timezone" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Short bio / About Me</label>
-              <textarea [(ngModel)]="bio" name="bio" rows="3" class="w-full border border-gray-300 rounded-md px-3 py-2"></textarea>
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===1">
-          <h3 class="font-semibold">Verification</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(1).length">Required: {{ fieldsMissingForStep(1).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Government ID type</label>
-              <input [(ngModel)]="verification.govIdType" name="govIdType" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Government ID (file URL)</label>
-              <input [(ngModel)]="verification.govIdUrl" name="govIdUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Selfie/Video with ID (URL)</label>
-              <input [(ngModel)]="verification.selfieUrl" name="selfieUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Proof of residence (URL, optional)</label>
-              <input [(ngModel)]="verification.proofResidenceUrl" name="proofResidenceUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===2">
-          <h3 class="font-semibold">Education & Credentials</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(2).length">Required: {{ fieldsMissingForStep(2).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Highest degree (URL)</label>
-              <input [(ngModel)]="education.degreeUrl" name="degreeUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Teaching certificate (URL)</label>
-              <input [(ngModel)]="education.certificateUrl" name="certificateUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Transcript/pro license (URL, optional)</label>
-              <input [(ngModel)]="education.transcriptUrl" name="transcriptUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Portfolio (LinkedIn/GitHub/etc.)</label>
-              <input [(ngModel)]="education.portfolioUrl" name="portfolioUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Reference letter (URL, optional)</label>
-              <input [(ngModel)]="education.referenceUrl" name="referenceUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===3">
-          <h3 class="font-semibold">Teaching Profile</h3>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Subjects / skills</label>
-              <input [(ngModel)]="subjects" name="subjects" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="e.g., Algebra, Physics" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Proficiency levels</label>
-              <input [(ngModel)]="teaching.levels" name="levels" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="beginner, intermediate, advanced" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Formats</label>
-              <input [(ngModel)]="teaching.formats" name="formats" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="live, recorded, Q&A, group" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Hourly rate / tier</label>
-              <input [(ngModel)]="teaching.rate" name="rate" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Availability (summary)</label>
-              <input [(ngModel)]="teaching.availability" name="availability" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===4">
-          <h3 class="font-semibold">Media</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(4).length">Required: {{ fieldsMissingForStep(4).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Video introduction (URL)</label>
-              <input [(ngModel)]="media.introUrl" name="introUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Demo lesson / sample (URL)</label>
-              <input [(ngModel)]="media.demoUrl" name="demoUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===5">
-          <h3 class="font-semibold">Consents & Agreements</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(5).length">Required: {{ fieldsMissingForStep(5).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="inline-flex items-center gap-2"><input type="checkbox" [(ngModel)]="consents.backgroundCheck" name="backgroundCheck" /> Background check consent</label>
-            <label class="inline-flex items-center gap-2"><input type="checkbox" [(ngModel)]="consents.codeOfConduct" name="codeOfConduct" /> Agree to Code of Conduct</label>
-            <label class="inline-flex items-center gap-2"><input type="checkbox" [(ngModel)]="consents.cleanRecord" name="cleanRecord" /> Declaration of no offenses</label>
-            <label class="inline-flex items-center gap-2"><input type="checkbox" [(ngModel)]="consents.lessonRecording" name="lessonRecording" /> Consent to lesson recording</label>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===6">
-          <h3 class="font-semibold">Payout</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(6).length">Required: {{ fieldsMissingForStep(6).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Method</label>
-              <input [(ngModel)]="payout.method" name="payoutMethod" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="PayPal, Stripe, Wise, Bank" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Payout name (must match ID)</label>
-              <input [(ngModel)]="payout.name" name="payoutName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Tax info (optional)</label>
-              <input [(ngModel)]="payout.tax" name="payoutTax" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section *ngIf="step===7" class="space-y-3">
-          <h3 class="font-semibold">Review & Submit</h3>
-          <p class="text-sm text-gray-700">Progress: {{ progressPct }}%. You can submit when all required items are complete. You may still submit and the server will validate.</p>
-          <div class="text-xs text-red-700" *ngIf="missingRequired().length">Missing: {{ missingRequired().join(', ') }}</div>
-        </section>
-
-        <div class="flex items-center gap-3">
-          <button type="button" (click)="back()" class="px-4 py-2 rounded-md border" [disabled]="step===0">Back</button>
-          <button type="button" (click)="next(); saveDraft()" class="px-4 py-2 rounded-md border" [disabled]="!validForStep(step)">Next</button>
-          <button type="button" (click)="saveDraft()" class="bg-gray-700 text-white px-4 py-2 rounded-md" [disabled]="saving">Save Draft</button>
-          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md" [disabled]="saving">{{ saving ? 'Submitting…' : 'Submit for Review' }}</button>
-          <div *ngIf="message" class="text-sm" [class.text-green-700]="success" [class.text-red-700]="!success">{{ message }}</div>
-        </div>
-      </form>
-    </div>
-  `
+  templateUrl: './become-tutor.page.html'
 })
 export class BecomeTutorPage implements OnInit {
   bio = '';
@@ -222,6 +24,16 @@ export class BecomeTutorPage implements OnInit {
   media: any = { introUrl: '', demoUrl: '' };
   payout: any = { method: '', name: '', tax: '' };
   consents: any = { backgroundCheck: false, codeOfConduct: false, cleanRecord: false, lessonRecording: false };
+
+  step = 0;
+  steps = ['Personal Info','Verification','Education & Credentials','Teaching Profile','Media','Consents & Agreements','Payout','Review & Submit'];
+
+  get progressPct(): number {
+    const missing = this.missingRequired();
+    const total = 14; // matches server required count
+    const done = Math.max(0, total - missing.length);
+    return Math.round((done / total) * 100);
+  }
 
   ngOnInit() { this.refreshStatus() }
 
@@ -245,16 +57,6 @@ export class BecomeTutorPage implements OnInit {
         this.consents = d.consents || this.consents;
       } else { this.status = null; this.statusLine = '' }
     } catch { this.status = null; this.statusLine = '' }
-  }
-
-  step = 0;
-  steps = ['Personal Info','Verification','Education & Credentials','Teaching Profile','Media','Consents & Agreements','Payout','Review & Submit'];
-
-  get progressPct(): number {
-    const missing = this.missingRequired();
-    const total = 14; // matches server required count
-    const done = Math.max(0, total - missing.length);
-    return Math.round((done / total) * 100);
   }
 
   back() { if (this.step > 0) this.step--; }
@@ -370,3 +172,4 @@ export class BecomeTutorPage implements OnInit {
     finally { this.saving = false }
   }
 }
+

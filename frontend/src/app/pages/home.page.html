@@ -1,0 +1,89 @@
+<div class="font-sans p-5 max-w-[1100px] mx-auto">
+  <header class="flex items-center justify-between gap-4 mb-4">
+    <h1 class="m-0 text-xl font-semibold">Berjis Schools</h1>
+    <div class="opacity-70 text-sm">{{ domainHint }}</div>
+  </header>
+
+  <section *ngIf="!authed; else dashboard">
+    <div class="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
+      <div class="border border-gray-200 rounded-xl p-4">
+        <h3 class="mt-0 font-semibold">Explore Top Schools</h3>
+        <p class="mb-2">See featured schools and programs. Join and learn.</p>
+        <ul class="list-disc pl-5">
+          <li *ngFor="let s of featuredSchools">{{ s.name }}<span *ngIf="s.description"> - {{ s.description }}</span></li>
+        </ul>
+        <a routerLink="/classes" class="text-sm text-blue-600 hover:underline">View classes ↗</a>
+      </div>
+      <div class="border border-gray-200 rounded-xl p-4">
+        <h3 class="mt-0 font-semibold">Best Tutors</h3>
+        <p class="mb-2">Discover highly rated tutors across subjects.</p>
+        <ul class="list-disc pl-5">
+          <li *ngFor="let t of featuredTutors">{{ t }}</li>
+        </ul>
+      </div>
+      <div class="border border-gray-200 rounded-xl p-4">
+        <h3 class="mt-0 font-semibold">See How You Compare</h3>
+        <p>Take a public test and compare against top students.</p>
+        <p *ngIf="topLeaderboardLine; else lbFallback" class="text-sm opacity-80">{{ topLeaderboardLine }}</p>
+        <ng-template #lbFallback>
+          <p class="text-sm opacity-80">Example: "Best in Physics scored 90%"</p>
+        </ng-template>
+        <a routerLink="/tests" class="text-sm text-blue-600 hover:underline">Browse tests ↗</a>
+      </div>
+    </div>
+    <div class="mt-5">
+      <a [href]="loginHref" class="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg no-underline">Get Started ↗</a>
+    </div>
+  </section>
+
+  <ng-template #dashboard>
+    <div class="grid gap-4 grid-cols-1">
+      <div class="border border-gray-200 rounded-xl p-4">
+        <h3 class="mt-0 font-semibold">My Schools</h3>
+        <div *ngIf="mySchools?.length; else noSchools">
+          <ul class="list-disc pl-5">
+            <li *ngFor="let s of mySchools">{{ s.name }}</li>
+          </ul>
+        </div>
+        <ng-template #noSchools><div class="opacity-70">No schools yet.</div></ng-template>
+        <div class="mt-3 flex gap-3">
+          <a routerLink="/schools/create" class="text-sm text-blue-600 hover:underline">Create a school</a>
+          <a routerLink="/schools/staff" class="text-sm text-blue-600 hover:underline">Manage staff</a>
+        </div>
+      </div>
+
+      <div class="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
+        <div class="border border-gray-200 rounded-xl p-4">
+          <h4 class="mt-0 font-semibold">Ongoing Lessons</h4>
+          <div *ngIf="inProgressLessonsCount !== null; else lp">
+            {{ inProgressLessonsCount }} in progress
+          </div>
+          <ng-template #lp><div class="opacity-70">Loading.</div></ng-template>
+          <a routerLink="/lessons" class="text-sm text-blue-600 hover:underline">Go to lessons ↗</a>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-4">
+          <h4 class="mt-0 font-semibold">Recent Tests</h4>
+          <ul *ngIf="recentTests?.length; else rt" class="list-disc pl-5">
+            <li *ngFor="let t of recentTests">{{ t.title }}</li>
+          </ul>
+          <ng-template #rt><div class="opacity-70">Loading.</div></ng-template>
+          <a routerLink="/tests" class="text-sm text-blue-600 hover:underline">See all tests ↗</a>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-4">
+          <h4 class="mt-0 font-semibold">Unfinished Homework</h4>
+          <div *ngIf="inProgressLessonsCount !== null; else hw">
+            {{ inProgressLessonsCount }} items to finish
+          </div>
+          <ng-template #hw><div class="opacity-70">Loading.</div></ng-template>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-4">
+          <h4 class="mt-0 font-semibold">Teachers</h4>
+          <ul class="list-disc pl-5">
+            <li *ngFor="let t of myTeachers">{{ t }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </ng-template>
+</div>
+

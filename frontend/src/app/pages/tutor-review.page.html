@@ -1,0 +1,31 @@
+    <div class="p-5 max-w-6xl">
+      <h2 class="mt-0 text-lg font-semibold">Tutor Applications</h2>
+      <div *ngIf="forbidden" class="text-red-700">You are not a platform moderator.</div>
+      <div *ngIf="!forbidden" class="grid gap-4">
+        <div class="flex gap-2 items-end">
+          <label class="text-sm">Status</label>
+          <select [(ngModel)]="status" name="status" class="border border-gray-300 rounded-md px-3 py-2">
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <button (click)="load()" class="bg-gray-800 text-white px-4 py-2 rounded-md">Refresh</button>
+        </div>
+        <table class="w-full text-sm" *ngIf="rows?.length">
+          <thead><tr class="text-left text-gray-600"><th class="py-1">User</th><th class="py-1">Display</th><th class="py-1">Email</th><th class="py-1">Submitted</th><th class="py-1">Actions</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let r of rows" class="border-t border-gray-100">
+              <td class="py-1">{{ r.userId }}</td>
+              <td class="py-1">{{ r.displayName || '-' }}</td>
+              <td class="py-1">{{ r.email || '-' }}</td>
+              <td class="py-1">{{ r.submittedAt | date:'medium' }}</td>
+              <td class="py-1 flex gap-2">
+                <button *ngIf="status==='pending'" (click)="approve(r.userId)" class="text-green-700 hover:underline">Approve</button>
+                <button *ngIf="status==='pending'" (click)="reject(r.userId)" class="text-red-700 hover:underline">Reject</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  
