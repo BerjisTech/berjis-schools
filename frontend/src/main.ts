@@ -18,6 +18,7 @@ import { TestViewComponent } from './app/components/course/test-view.component';
 import { CreateCoursePage } from './app/pages/create-course.page';
 import { AppComponent } from './app/app.component';
 import { SearchPage } from './app/pages/search.page';
+import { authGuard } from './app/guards/auth.guard';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -25,19 +26,19 @@ const routes: Routes = [
   { path: '', loadComponent: () => Promise.resolve(HomePage) },
   { path: 'classes', loadComponent: () => Promise.resolve(ClassesPage) },
   { path: 'subjects', loadComponent: () => Promise.resolve(SubjectsPage) },
-  { path: 'lessons', loadComponent: () => Promise.resolve(LessonsPage) },
-  { path: 'tests', loadComponent: () => Promise.resolve(TestsPage) },
-  { path: 'schools/create', loadComponent: () => Promise.resolve(CreateSchoolPage) },
-  { path: 'schools/staff', loadComponent: () => Promise.resolve(SchoolStaffPage) },
-  { path: 'tutors/become', loadComponent: () => Promise.resolve(BecomeTutorPage) },
-  { path: 'moderation', loadComponent: () => Promise.resolve(ModerationPage) },
-  { path: 'moderation/platform', loadComponent: () => Promise.resolve(PlatformModerationPage) },
-  { path: 'moderation/tutors', loadComponent: () => Promise.resolve(TutorReviewPage) },
-  { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage) },
-  { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage) },
+  { path: 'lessons', loadComponent: () => Promise.resolve(LessonsPage), canActivate: [authGuard] },
+  { path: 'tests', loadComponent: () => Promise.resolve(TestsPage), canActivate: [authGuard] },
+  { path: 'schools/create', loadComponent: () => Promise.resolve(CreateSchoolPage), canActivate: [authGuard] },
+  { path: 'schools/staff', loadComponent: () => Promise.resolve(SchoolStaffPage), canActivate: [authGuard] },
+  { path: 'tutors/become', loadComponent: () => Promise.resolve(BecomeTutorPage), canActivate: [authGuard] },
+  { path: 'moderation', loadComponent: () => Promise.resolve(ModerationPage), canActivate: [authGuard] },
+  { path: 'moderation/platform', loadComponent: () => Promise.resolve(PlatformModerationPage), canActivate: [authGuard] },
+  { path: 'moderation/tutors', loadComponent: () => Promise.resolve(TutorReviewPage), canActivate: [authGuard] },
+  { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage), canActivate: [authGuard] },
+  { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage), canActivate: [authGuard] },
   { path: 'course/:id', component: CourseOverviewComponent },
-  { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent },
-  { path: 'course/:id/tests/:testId', component: TestViewComponent },
+  { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent, canActivate: [authGuard] },
+  { path: 'course/:id/tests/:testId', component: TestViewComponent, canActivate: [authGuard] },
   { path: 'search', loadComponent: () => Promise.resolve(SearchPage) },
 ];
 
