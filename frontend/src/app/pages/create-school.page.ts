@@ -18,8 +18,8 @@ export class CreateSchoolPage implements OnInit {
   staff: any = { tutors: [] as Array<{ userId: string; role: string; status: 'pending'|'verified' }>, adminRoles: '', contractTerms: '' };
   tutorSearchQuery = '';
   tutorResults: Array<{ userId: string; displayName?: string|null }> = [];
-  finance: any = { payoutMethod: '', currency: '', bankDetails: '', revenueModel: '', taxDocsUrl: '', bankStatementUrl: '' };
-  financeFiles: Record<string, File|null> = { taxDocsUrl: null, bankStatementUrl: null } as any;
+  finance: any = { payoutMethod: '', currency: '', bankDetails: '', revenueModel: '', taxDocsUrl: [] as string[], bankStatementUrl: [] as string[] };
+  financeFiles: Record<string, File[]|null> = { taxDocsUrl: null, bankStatementUrl: null } as any;
   curriculum: any = { subjects: '', targets: '', format: '', languages: '', outlineUrl: '', sampleUrl: '', demoUrl: '' };
   agreements: any = { partnership: false, privacy: false, revenueSplit: false, codeOfConduct: false, quality: false, antiFraud: false, refund: false };
   extras: any = { mediaUrls: '', testimonials: '', bannerUrl: '', subdomain: '', themeColor: '', integrations: '', partnershipType: '' };
@@ -34,6 +34,8 @@ export class CreateSchoolPage implements OnInit {
   success = false;
   status: 'draft'|'pending'|'approved'|'rejected'|null = null;
   statusLine = '';
+  // expose urlFor in template
+  urlFor = urlFor;
 
   ngOnInit() { this.loadDraft(); this.refreshStatus() }
 
@@ -97,10 +99,10 @@ export class CreateSchoolPage implements OnInit {
 
   onFinanceFileChange(key: string, ev: Event) {
     const input = ev.target as HTMLInputElement;
-    const file = (input.files && input.files[0]) || null;
+    const files = (input.files && Array.from(input.files)) || null;
     this.uploadError = '';
-    this.financeFiles[key] = file;
-    if (file) this.finance[key] = file.name;
+    this.financeFiles[key] = files;
+    if (files && files.length) this.finance[key] = files.map(f => f.name);
   }
 
   fieldsMissingForStep(step: number): string[] {
@@ -222,7 +224,7 @@ export class CreateSchoolPage implements OnInit {
         if (missing.length) throw new Error(`Missing required fields: ${missing.join(', ')}`);
       }
       // Upload selected PDFs locally and replace URLs
-      const maxBytes = 10 * 1024 * 1024; // 10MB client guard
+      const maxBytes = 2 * 1024 * 1024; // 2MB client guard for business docs
       const upload = async (f: File): Promise<string> => {
         if (f.size > maxBytes) { throw new Error(`File too large. Max is ${maxBytes} bytes`) }
         if (!/\.pdf$/i.test(f.name)) { throw new Error('Only PDF files are allowed') }
@@ -237,7 +239,11 @@ export class CreateSchoolPage implements OnInit {
           const f = this.verifyFiles[k]; if (f) { this.verify[k] = await upload(f) }
         }
         for (const k of Object.keys(this.financeFiles)) {
-          const f = this.financeFiles[k]; if (f) { this.finance[k] = await upload(f) }
+          const arr = this.financeFiles[k]; if (arr && arr.length) {
+            const urls: string[] = [];
+            for (const f of arr) { urls.push(await upload(f)) }
+            this.finance[k] = urls;
+          }
         }
       } catch (e:any) { this.uploadError = e?.message || 'Upload failed'; throw e }
       finally { this.uploading = false }

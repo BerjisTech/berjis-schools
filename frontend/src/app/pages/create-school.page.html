@@ -192,12 +192,22 @@
           </select>
         </div>
         <div>
-          <label class="block text-sm mb-1">Tax compliance documents (PDF, optional)</label>
-          <input type="file" accept="application/pdf" (change)="onFinanceFileChange('taxDocsUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Tax compliance documents (PDF, optional, max 2 MB each)</label>
+          <input type="file" accept="application/pdf" multiple (change)="onFinanceFileChange('taxDocsUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <div class="text-xs mt-1 space-y-1" *ngIf="finance.taxDocsUrl?.length">
+            <div *ngFor="let u of finance.taxDocsUrl">Selected:
+              <a [href]="urlFor('schools-api') + u" target="_blank">{{ u }}</a>
+            </div>
+          </div>
         </div>
         <div>
-          <label class="block text-sm mb-1">Bank statement (PDF, optional)</label>
-          <input type="file" accept="application/pdf" (change)="onFinanceFileChange('bankStatementUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Bank statements (PDF, optional, multiple, max 2 MB each)</label>
+          <input type="file" accept="application/pdf" multiple (change)="onFinanceFileChange('bankStatementUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <div class="text-xs mt-1 space-y-1" *ngIf="finance.bankStatementUrl?.length">
+            <div *ngFor="let u of finance.bankStatementUrl">Selected:
+              <a [href]="urlFor('schools-api') + u" target="_blank">{{ u }}</a>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -298,6 +308,25 @@
       <h3 class="font-semibold">Review & Submit</h3>
       <div class="text-sm text-gray-600">Complete all required steps to enable submission.</div>
       <div class="text-xs text-red-700" *ngIf="missingRequired().length">Missing: {{ missingRequired().join(', ') }}</div>
+      <div class="space-y-2 text-sm">
+        <div class="font-semibold">Uploaded Documents</div>
+        <div>
+          <div class="font-medium">Verification</div>
+          <ul class="list-disc pl-5">
+            <li *ngIf="verify.registrationCertUrl"><a [href]="urlFor('schools-api') + verify.registrationCertUrl" target="_blank">Registration certificate</a></li>
+            <li *ngIf="verify.taxPinUrl"><a [href]="urlFor('schools-api') + verify.taxPinUrl" target="_blank">Tax PIN / compliance</a></li>
+            <li *ngIf="verify.proofAddressUrl"><a [href]="urlFor('schools-api') + verify.proofAddressUrl" target="_blank">Proof of address</a></li>
+            <li *ngIf="verify.founderIdUrl"><a [href]="urlFor('schools-api') + verify.founderIdUrl" target="_blank">Founder/admin ID</a></li>
+          </ul>
+        </div>
+        <div>
+          <div class="font-medium">Finance</div>
+          <ul class="list-disc pl-5">
+            <li *ngFor="let u of (finance.taxDocsUrl || [])"><a [href]="urlFor('schools-api') + u" target="_blank">Tax doc</a></li>
+            <li *ngFor="let u of (finance.bankStatementUrl || [])"><a [href]="urlFor('schools-api') + u" target="_blank">Bank statement</a></li>
+          </ul>
+        </div>
+      </div>
       <div>
         <pre class="text-xs bg-gray-50 border rounded p-3 overflow-auto max-h-64">{{ previewJson }}</pre>
       </div>

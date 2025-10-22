@@ -10,6 +10,9 @@ import (
     "strconv"
     "strings"
     "time"
+    "bytes"
+    "io"
+    "mime/multipart"
 
     "github.com/berjistech/berjis-ecosystem/schools/service/internal/auth"
     "github.com/gofiber/fiber/v2"
@@ -50,7 +53,7 @@ func New(opts Options) *fiber.App {
     uploadEnabled := true
     if v := strings.TrimSpace(os.Getenv("UPLOAD_ENABLED")); v != "" { uploadEnabled = strings.EqualFold(v, "true") || v == "1" }
     proxyUploadURL := strings.TrimSpace(os.Getenv("FILE_UPLOAD_PROXY_URL"))
-    maxBytes := int64(10 * 1024 * 1024) // 10MB default
+    maxBytes := int64(2 * 1024 * 1024) // 2MB default for business docs
     if v := strings.TrimSpace(os.Getenv("UPLOAD_MAX_BYTES")); v != "" { if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 { maxBytes = n } }
 
     // Simple upload endpoint (local or proxy)
