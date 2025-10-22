@@ -2,18 +2,18 @@
   <!-- Top bar -->
   <div class="h-14 px-4 border-b flex items-center justify-between bg-white">
     <div class="flex items-center gap-3">
-      <button class="material-icons" (click)="toggleSidebar()" title="Toggle sidebar">menu</button>
+      <button class="material-symbols-outlined" (click)="toggleSidebar()" title="Toggle sidebar">menu</button>
       <a routerLink="/" class="font-bold">Schools</a>
     </div>
     <form class="flex items-center gap-2 max-w-xl w-full px-3" (submit)="onSearchSubmit($event)">
-      <span class="material-icons text-gray-500">search</span>
+      <span class="material-symbols-outlined text-gray-500">search</span>
       <input class="flex-1 outline-none" type="text" placeholder="Search courses, lessons, tests" [ngModel]="search()" (ngModelChange)="search.set($event)" name="q" />
     </form>
     <div class="relative">
       <button class="flex items-center gap-2" (click)="toggleAccount()">
-        <span class="material-icons">account_circle</span>
+        <span class="material-symbols-outlined">account_circle</span>
         <span class="text-sm">Account</span>
-        <span class="material-icons text-sm">expand_more</span>
+        <span class="material-symbols-outlined text-sm">expand_more</span>
       </button>
       <div *ngIf="showAccount()" class="absolute right-0 mt-2 w-48 bg-white border rounded shadow">
         <a routerLink="/classes" class="block px-3 py-2 text-sm hover:bg-gray-50">My Courses</a>

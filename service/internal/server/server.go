@@ -908,7 +908,7 @@ func New(opts Options) *fiber.App {
         status := "pending"; if draft { status = "draft" }
         info := body["info"]; verify := body["verify"]; staff := body["staff"]; finance := body["finance"]; curriculum := body["curriculum"]; agreements := body["agreements"]; extras := body["extras"]
         if _, err := opts.DB.Exec(`INSERT INTO school_applications (owner_user_id, status, info, verify, staff, finance, curriculum, agreements, extras, progress_pct)
-            VALUES ($1,$11,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0))
+            VALUES ($1,$10,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0))
             ON CONFLICT (owner_user_id) DO UPDATE SET status='pending', info=COALESCE(EXCLUDED.info, school_applications.info), verify=COALESCE(EXCLUDED.verify, school_applications.verify),
               staff=COALESCE(EXCLUDED.staff, school_applications.staff), finance=COALESCE(EXCLUDED.finance, school_applications.finance), curriculum=COALESCE(EXCLUDED.curriculum, school_applications.curriculum),
               agreements=COALESCE(EXCLUDED.agreements, school_applications.agreements), extras=COALESCE(EXCLUDED.extras, school_applications.extras), progress_pct=COALESCE(EXCLUDED.progress_pct, school_applications.progress_pct), updated_at=now()`,

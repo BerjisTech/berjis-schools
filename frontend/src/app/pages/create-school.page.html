@@ -38,7 +38,19 @@
         </div>
         <div>
           <label class="block text-sm mb-1">Country of registration</label>
-          <input [(ngModel)]="info.country" name="info_country" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <input [(ngModel)]="info.country" name="info_country" class="w-full border border-gray-300 rounded-md px-3 py-2" list="countryList" placeholder="Start typing a country" />
+          <datalist id="countryList">
+            <option value="Kenya"></option>
+            <option value="Uganda"></option>
+            <option value="Tanzania"></option>
+            <option value="Rwanda"></option>
+            <option value="Nigeria"></option>
+            <option value="South Africa"></option>
+            <option value="United States"></option>
+            <option value="United Kingdom"></option>
+            <option value="Canada"></option>
+            <option value="India"></option>
+          </datalist>
         </div>
         <div>
           <label class="block text-sm mb-1">Business type</label>
@@ -46,7 +58,7 @@
         </div>
         <div>
           <label class="block text-sm mb-1">School website</label>
-          <input [(ngModel)]="info.website" name="info_website" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="https://..." />
+          <input type="url" [(ngModel)]="info.website" name="info_website" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="https://..." />
         </div>
         <div>
           <label class="block text-sm mb-1">Social links (comma-separated)</label>
@@ -61,7 +73,7 @@
           <div class="grid gap-3 md:grid-cols-3">
             <input [(ngModel)]="info.contact.name" name="info_contact_name" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Name" />
             <input [(ngModel)]="info.contact.email" name="info_contact_email" type="email" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Email" />
-            <input [(ngModel)]="info.contact.phone" name="info_contact_phone" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Phone" />
+            <input type="tel" [(ngModel)]="info.contact.phone" name="info_contact_phone" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Phone" />
           </div>
         </div>
         <div class="md:col-span-2">
@@ -77,20 +89,20 @@
       <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(1).length">Required: {{ fieldsMissingForStep(1).join(', ') }}</div>
       <div class="grid gap-3 md:grid-cols-2">
         <div>
-          <label class="block text-sm mb-1">Business registration certificate (URL)</label>
-          <input [(ngModel)]="verify.registrationCertUrl" name="v_registrationCertUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Business registration certificate (PDF)</label>
+          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('registrationCertUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
         </div>
         <div>
-          <label class="block text-sm mb-1">Tax identification/PIN (URL)</label>
-          <input [(ngModel)]="verify.taxPinUrl" name="v_taxPinUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Tax identification/PIN (PDF)</label>
+          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('taxPinUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
         </div>
         <div>
-          <label class="block text-sm mb-1">Proof of address (URL)</label>
-          <input [(ngModel)]="verify.proofAddressUrl" name="v_proofAddressUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Proof of address (PDF)</label>
+          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('proofAddressUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
         </div>
         <div>
-          <label class="block text-sm mb-1">Founder/admin ID (URL)</label>
-          <input [(ngModel)]="verify.founderIdUrl" name="v_founderIdUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Founder/admin ID (PDF)</label>
+          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('founderIdUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
         </div>
         <div>
           <label class="block text-sm mb-1">Authorization letter (optional)</label>
@@ -114,21 +126,22 @@
       <div>
         <label class="block text-sm mb-1">Tutors / Instructors</label>
         <div class="space-y-3">
-          <div *ngFor="let t of staff.tutors; let i = index" class="border rounded-md p-3">
-            <div class="grid gap-2 md:grid-cols-4">
-              <input [(ngModel)]="t.name" name="tutor_name_{{i}}" class="w-full border border-gray-300 rounded-md px-2 py-1" placeholder="Name" />
-              <input [(ngModel)]="t.email" name="tutor_email_{{i}}" type="email" class="w-full border border-gray-300 rounded-md px-2 py-1" placeholder="Email" />
-              <input [(ngModel)]="t.role" name="tutor_role_{{i}}" class="w-full border border-gray-300 rounded-md px-2 py-1" placeholder="Role" />
-              <select [(ngModel)]="t.status" name="tutor_status_{{i}}" class="w-full border border-gray-300 rounded-md px-2 py-1">
-                <option value="pending">Pending</option>
-                <option value="verified">Verified</option>
-              </select>
-            </div>
-            <div class="mt-2 text-right">
-              <button type="button" (click)="removeTutor(i)" class="text-xs text-red-700">Remove</button>
+          <div class="flex items-center gap-2">
+            <input [(ngModel)]="tutorSearchQuery" name="tutor_search2" class="border rounded px-3 py-2 flex-1" placeholder="Search user by name or email" (input)="searchUsers()" />
+            <button type="button" class="px-2 py-1 rounded border" (click)="searchUsers()">Search</button>
+          </div>
+          <div class="border rounded p-2 max-h-40 overflow-auto" *ngIf="tutorResults.length">
+            <div *ngFor="let u of tutorResults" class="flex items-center justify-between py-1">
+              <div class="text-sm">{{ u.displayName || u.userId }}</div>
+              <button type="button" class="px-2 py-1 rounded border" (click)="addTutorByUserId(u.userId)">Add</button>
             </div>
           </div>
-          <button type="button" (click)="addTutor()" class="px-3 py-1 border rounded">Add Tutor</button>
+          <div class="space-y-1">
+            <div *ngFor="let t of staff.tutors; let i = index" class="flex items-center justify-between">
+              <div class="text-sm">{{ t.userId }}</div>
+              <button type="button" (click)="removeTutor(i)" class="px-2 py-1 border rounded">Remove</button>
+            </div>
+          </div>
         </div>
       </div>
       <div>
@@ -294,4 +307,3 @@
     </div>
   </form>
 </div>
-

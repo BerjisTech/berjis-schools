@@ -13,7 +13,11 @@ export class CreateSchoolPage implements OnInit {
   // Form state
   info: any = { name: '', legalName: '', registrationNumber: '', country: '', businessType: '', website: '', social: '', logoUrl: '', description: '', contact: { name: '', email: '', phone: '' } };
   verify: any = { registrationCertUrl: '', taxPinUrl: '', proofAddressUrl: '', founderIdUrl: '', authorizationLetterUrl: '', accreditationUrl: '', insuranceUrl: '' };
-  staff: any = { tutors: [] as Array<{ name: string; email: string; role: string; status: 'pending'|'verified' }>, adminRoles: '', contractTerms: '' };
+  // hold selected PDF Files (uploaded later)
+  verifyFiles: Record<string, File|null> = { registrationCertUrl: null, taxPinUrl: null, proofAddressUrl: null, founderIdUrl: null } as any;
+  staff: any = { tutors: [] as Array<{ userId: string; role: string; status: 'pending'|'verified' }>, adminRoles: '', contractTerms: '' };
+  tutorSearchQuery = '';
+  tutorResults: Array<{ userId: string; displayName?: string|null }> = [];
   finance: any = { payoutMethod: '', currency: '', bankDetails: '', revenueModel: '', taxDocsUrl: '', bankStatementUrl: '' };
   curriculum: any = { subjects: '', targets: '', format: '', languages: '', outlineUrl: '', sampleUrl: '', demoUrl: '' };
   agreements: any = { partnership: false, privacy: false, revenueSplit: false, codeOfConduct: false, quality: false, antiFraud: false, refund: false };
@@ -64,8 +68,28 @@ export class CreateSchoolPage implements OnInit {
   back() { if (this.step > 0) this.step--; }
   next() { if (this.validForStep(this.step) && this.step < this.steps.length - 1) this.step++; }
 
-  addTutor() { this.staff.tutors.push({ name: '', email: '', role: '', status: 'pending' }) }
+  addTutor() { /* deprecated in favor of search add */ }
   removeTutor(i: number) { this.staff.tutors.splice(i, 1) }
+  async searchUsers() {
+    const q = this.tutorSearchQuery.trim(); if (!q) { this.tutorResults = []; return }
+    try {
+      const res = await fetch(`${urlFor('schools-api')}/v1/search?type=user&q=${encodeURIComponent(q)}`, { credentials: 'include' });
+      const j = await res.json();
+      this.tutorResults = (j?.data || []).map((u:any) => ({ userId: u.userId, displayName: u.displayName }));
+    } catch { this.tutorResults = [] }
+  }
+  addTutorByUserId(uid: string) {
+    if (!uid) return;
+    if (!this.staff.tutors.find((t:any)=>t.userId===uid)) this.staff.tutors.push({ userId: uid, role: 'tutor', status: 'pending' });
+    this.tutorSearchQuery = ''; this.tutorResults = [];
+  }
+
+  onVerifyFileChange(key: string, ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = (input.files && input.files[0]) || null;
+    this.verifyFiles[key] = file;
+    if (file) this.verify[key] = file.name;
+  }
 
   fieldsMissingForStep(step: number): string[] {
     const miss: string[] = [];
@@ -79,10 +103,10 @@ export class CreateSchoolPage implements OnInit {
       if (!s(this.info.contact?.phone)) miss.push('Primary contact phone');
       if (!s(this.info.description)) miss.push('Short description');
     } else if (step === 1) {
-      if (!s(this.verify.registrationCertUrl)) miss.push('Registration certificate');
-      if (!s(this.verify.taxPinUrl)) miss.push('Tax identification/PIN');
-      if (!s(this.verify.proofAddressUrl)) miss.push('Proof of address');
-      if (!s(this.verify.founderIdUrl)) miss.push('Founder/admin ID');
+      if (!this.verifyFiles.registrationCertUrl) miss.push('Registration certificate (PDF)');
+      if (!this.verifyFiles.taxPinUrl) miss.push('Tax identification/PIN (PDF)');
+      if (!this.verifyFiles.proofAddressUrl) miss.push('Proof of address (PDF)');
+      if (!this.verifyFiles.founderIdUrl) miss.push('Founder/admin ID (PDF)');
     } else if (step === 2) {
       if (!this.staff.tutors.length) miss.push('At least one tutor/instructor');
     } else if (step === 3) {
