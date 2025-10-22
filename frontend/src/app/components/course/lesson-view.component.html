@@ -1,0 +1,66 @@
+<div *ngIf="loading()" class="p-6">Loading lesson…</div>
+<ng-container *ngIf="!loading() && lesson() as l">
+  <div class="p-6 space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold">{{ l.title || l.name }}</h1>
+      <div class="text-sm text-gray-600">Type: {{ l.type }} • {{ l.estimatedMinutes || 0 }} mins</div>
+    </div>
+
+    <div *ngIf="contentKind() === 'text'">
+      <div class="prose max-w-none" [innerHTML]="l.content?.html || l.content?.markdown"></div>
+    </div>
+    <div *ngIf="contentKind() === 'audio'">
+      <audio controls [src]="l.content?.url" class="w-full"></audio>
+    </div>
+    <div *ngIf="contentKind() === 'video'">
+      <video controls [src]="l.content?.url" class="w-full max-h-[60vh]"></video>
+    </div>
+    <div *ngIf="contentKind() === 'live'" class="p-4 border rounded">
+      <div class="font-semibold mb-2">Live Session</div>
+      <div class="text-sm text-gray-700">Mode: {{ l.content?.mode }}</div>
+      <div class="text-sm text-gray-700" *ngIf="l.content?.startsAt && l.content?.endsAt">
+        {{ l.content.startsAt }} → {{ l.content.endsAt }}
+      </div>
+      <button class="mt-3 px-4 py-2 rounded bg-green-600 text-white">Join</button>
+    </div>
+
+    <div class="space-y-3">
+      <div class="text-xl font-semibold">Questions & Answers</div>
+      <div class="space-y-2">
+        <input type="text" class="w-full border rounded px-3 py-2" placeholder="Question title" [ngModel]="newQuestionTitle()" (ngModelChange)="newQuestionTitle.set($event)" />
+        <textarea class="w-full border rounded px-3 py-2" rows="3" placeholder="What do you want to ask?" [ngModel]="newQuestionBody()" (ngModelChange)="newQuestionBody.set($event)"></textarea>
+        <button class="px-4 py-2 rounded bg-blue-600 text-white" (click)="askQuestion()">Ask Question</button>
+      </div>
+      <div class="divide-y">
+        <div *ngFor="let q of qas()" class="py-3">
+          <div class="flex items-start gap-3">
+            <div class="flex flex-col items-center w-10">
+              <button class="material-icons" (click)="upvoteQuestion(q)">expand_less</button>
+              <div class="text-sm font-semibold">{{ q.points }}</div>
+              <button class="material-icons" (click)="downvoteQuestion(q)">expand_more</button>
+            </div>
+            <div class="flex-1">
+              <div class="font-medium">{{ q.title }}</div>
+              <div class="text-sm text-gray-700 whitespace-pre-wrap">{{ q.body }}</div>
+              <div class="mt-2 space-y-2">
+                <div *ngFor="let a of q.answers" class="p-2 border rounded">
+                  <div class="text-sm whitespace-pre-wrap">{{ a.body }}</div>
+                  <div class="text-xs text-gray-600 flex items-center gap-3 mt-1">
+                    <span>Points: {{ a.points }}</span>
+                    <button class="underline" (click)="voteAnswer(q,a,1)">Upvote</button>
+                    <button class="underline" (click)="voteAnswer(q,a,-1)">Downvote</button>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <input #ansInput type="text" class="flex-1 border rounded px-3 py-1" placeholder="Add an answer" />
+                  <button class="px-3 py-1 rounded border" (click)="addAnswer(q, ansInput.value); ansInput.value=''">Answer</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</ng-container>
+

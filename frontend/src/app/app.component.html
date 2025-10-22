@@ -1,0 +1,49 @@
+<div *ngIf="authed(); else guest">
+  <!-- Top bar -->
+  <div class="h-14 px-4 border-b flex items-center justify-between bg-white">
+    <div class="flex items-center gap-3">
+      <button class="material-icons" (click)="toggleSidebar()" title="Toggle sidebar">menu</button>
+      <a routerLink="/" class="font-bold">Schools</a>
+    </div>
+    <form class="flex items-center gap-2 max-w-xl w-full px-3" (submit)="onSearchSubmit($event)">
+      <span class="material-icons text-gray-500">search</span>
+      <input class="flex-1 outline-none" type="text" placeholder="Search courses, lessons, tests" [ngModel]="search()" (ngModelChange)="search.set($event)" name="q" />
+    </form>
+    <div class="relative">
+      <button class="flex items-center gap-2" (click)="toggleAccount()">
+        <span class="material-icons">account_circle</span>
+        <span class="text-sm">Account</span>
+        <span class="material-icons text-sm">expand_more</span>
+      </button>
+      <div *ngIf="showAccount()" class="absolute right-0 mt-2 w-48 bg-white border rounded shadow">
+        <a routerLink="/classes" class="block px-3 py-2 text-sm hover:bg-gray-50">My Courses</a>
+        <a routerLink="/course/create" class="block px-3 py-2 text-sm hover:bg-gray-50">Create Course</a>
+        <a routerLink="/tutors/become" class="block px-3 py-2 text-sm hover:bg-gray-50">Become a Tutor</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Body with sidebar -->
+  <div class="flex" style="height: calc(100vh - 3.5rem)">
+    <aside *ngIf="showSidebar()" class="w-64 border-r p-3 bg-gray-50 space-y-2">
+      <a routerLink="/" class="block px-2 py-2 rounded hover:bg-gray-100">Home</a>
+      <a routerLink="/classes" class="block px-2 py-2 rounded hover:bg-gray-100">Courses</a>
+      <a routerLink="/subjects" class="block px-2 py-2 rounded hover:bg-gray-100">Subjects</a>
+      <a routerLink="/lessons" class="block px-2 py-2 rounded hover:bg-gray-100">Lessons</a>
+      <a routerLink="/tests" class="block px-2 py-2 rounded hover:bg-gray-100">Tests</a>
+      <a routerLink="/moderation" class="block px-2 py-2 rounded hover:bg-gray-100">Moderation</a>
+    </aside>
+    <main class="flex-1 overflow-auto">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>
+
+<ng-template #guest>
+  <div class="h-14 px-4 border-b flex items-center justify-between bg-white">
+    <a routerLink="/" class="font-bold">Schools</a>
+    <a [href]="loginHref" class="px-3 py-2 rounded bg-gray-900 text-white text-sm">Sign in</a>
+  </div>
+  <router-outlet></router-outlet>
+</ng-template>
+

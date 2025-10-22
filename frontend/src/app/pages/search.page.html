@@ -1,0 +1,65 @@
+y<div class="p-6 space-y-6">
+  <div class="text-xl font-semibold">Search results for “{{ q }}”</div>
+  <div *ngIf="loading">Searching…</div>
+
+  <div class="grid md:grid-cols-2 gap-6" *ngIf="!loading">
+    <div class="space-y-2">
+      <div class="font-semibold">Schools</div>
+      <div *ngIf="schools.length === 0" class="text-sm text-gray-600">No matching schools.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let s of schools"><a [routerLink]="['/classes']" class="underline">{{ s.name }}</a></li>
+      </ul>
+    </div>
+
+    <div class="space-y-2">
+      <div class="font-semibold">Tutors</div>
+      <div *ngIf="tutors.length === 0" class="text-sm text-gray-600">No matching tutors.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let t of tutors">{{ t.userId }}</li>
+      </ul>
+    </div>
+
+    <div class="space-y-2">
+      <div class="font-semibold">Courses</div>
+      <div *ngIf="classes.length === 0" class="text-sm text-gray-600">No matching courses.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let c of classes"><a [routerLink]="['/course', c.id]" class="underline">{{ c.title }}</a></li>
+      </ul>
+    </div>
+
+    <div class="space-y-2">
+      <div class="font-semibold">Subjects</div>
+      <div *ngIf="subjects.length === 0" class="text-sm text-gray-600">No matching subjects.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let s of subjects">{{ s.title }}</li>
+      </ul>
+    </div>
+
+    <div class="space-y-2">
+      <div class="font-semibold">Lessons</div>
+      <div *ngIf="lessons.length === 0" class="text-sm text-gray-600">No matching lessons.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let l of lessons"><a [routerLink]="['/course', l.classId, 'lessons', l.id]" class="underline">{{ l.title }}</a></li>
+      </ul>
+    </div>
+
+    <div class="space-y-2">
+      <div class="font-semibold">Tests</div>
+      <div *ngIf="tests.length === 0" class="text-sm text-gray-600">No matching tests.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let t of tests">
+          <a *ngIf="t.classId; else testNoLink" [routerLink]="['/course', t.classId, 'tests', t.id]" class="underline">{{ t.title }}</a>
+          <ng-template #testNoLink>{{ t.title }}</ng-template>
+        </li>
+      </ul>
+    </div>
+
+    <div class="space-y-2 md:col-span-2">
+      <div class="font-semibold">People</div>
+      <div *ngIf="users.length === 0" class="text-sm text-gray-600">No matching users.</div>
+      <ul class="list-disc pl-6">
+        <li *ngFor="let u of users">{{ u.displayName || u.userId }}</li>
+      </ul>
+    </div>
+  </div>
+</div>

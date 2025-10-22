@@ -1,0 +1,185 @@
+<div class="p-6 space-y-4" *ngIf="!loading(); else loadingT">
+  <div>
+    <h1 class="text-2xl font-bold">{{ title() || ('Test ' + testId()) }}</h1>
+    <div class="text-sm text-gray-600">{{ test()?.description }}</div>
+  </div>
+
+  <form class="space-y-4">
+    <div *ngFor="let q of questions(); let i = index" class="p-4 border rounded space-y-2">
+      <div class="font-medium">Q{{ i+1 }}. {{ q.prompt }}</div>
+      <!-- Multiple Choice -->
+      <div *ngIf="q.qtype==='mcq'">
+        <ng-container *ngIf="q.options?.allowMultiple; else singleChoice">
+          <div class="space-y-1" *ngFor="let opt of (q.options?.choices || [])">
+            <label class="flex items-center gap-2">
+              <input type="checkbox" [checked]="(getAnswer(q.id)||[]).includes(opt.key)" (change)="toggleMultiSelect(q.id, opt.key, $event.target.checked)" />
+              <span>{{ opt.key }}.</span>
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+        </ng-container>
+        <ng-template #singleChoice>
+          <div class="space-y-1" *ngFor="let opt of (q.options?.choices || [])">
+            <label class="flex items-center gap-2">
+              <input type="radio" name="q{{q.id}}" [value]="opt.key" [ngModel]="getAnswer(q.id)" (ngModelChange)="setAnswer(q.id, $event)" />
+              <span>{{ opt.key }}.</span>
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+        </ng-template>
+      </div>
+      <!-- True/False -->
+      <div *ngIf="q.qtype==='truefalse'">
+        <label class="flex items-center gap-2"><input type="radio" name="q{{q.id}}" [value]="true" [ngModel]="getAnswer(q.id)" (ngModelChange)="setAnswer(q.id, $event)" /> True</label>
+        <label class="flex items-center gap-2"><input type="radio" name="q{{q.id}}" [value]="false" [ngModel]="getAnswer(q.id)" (ngModelChange)="setAnswer(q.id, $event)" /> False</label>
+      </div>
+      <!-- Short/Sentence Answer -->
+      <div *ngIf="q.qtype==='short' || q.qtype==='sentence'">
+        <input type="text" class="w-full border rounded px-3 py-2" [ngModel]="getAnswer(q.id) || ''" (ngModelChange)="setAnswer(q.id, $event)" />
+      </div>
+      <!-- Long/Essay Answer -->
+      <div *ngIf="q.qtype==='long' || q.qtype==='essay'">
+        <textarea class="w-full border rounded px-3 py-2" rows="6" [ngModel]="getAnswer(q.id) || ''" (ngModelChange)="setAnswer(q.id, $event)"></textarea>
+      </div>
+      <!-- Numeric -->
+      <div *ngIf="q.qtype==='numeric'">
+        <input type="number" class="w-40 border rounded px-3 py-2" [ngModel]="getAnswer(q.id) || ''" (ngModelChange)="setAnswer(q.id, $event)" />
+      </div>
+      <!-- Formula (plain text for now) -->
+      <div *ngIf="q.qtype==='formula'">
+        <input type="text" class="w-full border rounded px-3 py-2" placeholder="Enter formula" [ngModel]="getAnswer(q.id) || ''" (ngModelChange)="setAnswer(q.id, $event)" />
+      </div>
+      <!-- Code (plain textarea) -->
+      <div *ngIf="q.qtype==='code'">
+        <textarea class="w-full font-mono border rounded px-3 py-2" rows="6" [ngModel]="getAnswer(q.id) || ''" (ngModelChange)="setAnswer(q.id, $event)"></textarea>
+      </div>
+      <!-- Fill in the Blank -->
+      <div *ngIf="q.qtype==='fillblank'">
+        <div class="space-y-2" *ngFor="let b of (q.options?.blanks || [])">
+          <div class="text-sm text-gray-600">Blank: {{ b.id }}</div>
+          <ng-container [ngSwitch]="b.kind">
+            <input *ngSwitchCase="'text'" type="text" class="w-full border rounded px-3 py-2"
+              [ngModel]="getBlankAnswer(q.id, b.id)" (ngModelChange)="setBlankAnswer(q.id, b.id, $event)" />
+            <select *ngSwitchCase="'dropdown'" class="border rounded px-3 py-2"
+              [ngModel]="getBlankAnswer(q.id, b.id)" (ngModelChange)="setBlankAnswer(q.id, b.id, $event)">
+              <option *ngFor="let c of (b.choices||[])" [value]="c">{{ c }}</option>
+            </select>
+            <input *ngSwitchDefault type="text" class="w-full border rounded px-3 py-2"
+              [ngModel]="getBlankAnswer(q.id, b.id)" (ngModelChange)="setBlankAnswer(q.id, b.id, $event)" />
+          </ng-container>
+        </div>
+      </div>
+      <!-- Matching -->
+      <div *ngIf="q.qtype==='match'">
+        <div class="grid md:grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <div *ngFor="let l of (q.options?.left || [])" class="text-sm">{{ l.label }}</div>
+          </div>
+          <div class="space-y-1">
+            <div *ngFor="let l of (q.options?.left || []); let idx = index">
+              <select class="border rounded px-2 py-1 w-full" [ngModel]="getMatchSelection(q.id, l.id)"
+                (ngModelChange)="setMatchAnswer(q.id, l.id, $event)">
+                <option [value]="''">Select…</option>
+                <option *ngFor="let r of (q.options?.right || [])" [value]="r.id">{{ r.label }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Ordering -->
+      <div *ngIf="q.qtype==='ordering'">
+        <div class="space-y-2">
+          <div *ngFor="let item of getOrdering(q); let idx = index" class="flex items-center gap-2">
+            <button type="button" class="border rounded px-2 py-1" (click)="moveOrderingUp(q, idx)">↑</button>
+            <button type="button" class="border rounded px-2 py-1" (click)="moveOrderingDown(q, idx)">↓</button>
+            <span>{{ labelForOrdering(q, item) }}</span>
+          </div>
+        </div>
+      </div>
+      <!-- Hotspot (placeholder) -->
+      <div *ngIf="q.qtype==='hotspot'">
+          <div class="relative inline-block" [style.width.px]="q.options?.width || 600" [style.height.px]="q.options?.height || 400">
+            <img [src]="q.options?.imageUrl" class="w-full h-full object-contain" />
+            <div *ngFor="let r of (q.options?.regions || [])" class="absolute border-2 border-amber-500/60"
+              [style.left.px]="r.coords?.[0]" [style.top.px]="r.coords?.[1]" [style.width.px]="r.coords?.[2]" [style.height.px]="r.coords?.[3]"
+              [class.bg-amber-200]="(getAnswer(q.id)||[]).includes(r.id)"
+            (click)="toggleHotspot(q.id, r.id)">
+            </div>
+          </div>
+        </div>
+      <!-- Drag & Drop -->
+      <div *ngIf="q.qtype==='dragdrop'" class="space-y-2">
+        <div class="text-sm text-gray-600">Drag items into bins</div>
+        <div class="flex flex-wrap gap-4">
+          <div class="p-2 border rounded min-w-[200px]" (dragover)="$event.preventDefault()"
+            (drop)="dropToUnassigned(q, $event)">
+            <div class="font-medium">Unassigned</div>
+            <div class="space-y-1">
+              <div *ngFor="let it of getUnassignedItems(q)"
+                draggable="true" (dragstart)="onDragStart($event, it)" class="px-2 py-1 border rounded inline-block cursor-move">{{ labelForOrdering(q, it) }}</div>
+            </div>
+          </div>
+          <div *ngFor="let b of (q.options?.bins || [])" class="p-2 border rounded min-w-[200px]" (dragover)="$event.preventDefault()"
+            (drop)="dropToBin(q, b.id, $event)">
+            <div class="font-medium">{{ b.label }}</div>
+            <div class="space-y-1">
+              <div *ngFor="let it of getBinItems(q, b.id)" draggable="true"
+                (dragstart)="onDragStart($event, it)" class="px-2 py-1 border rounded inline-block cursor-move">{{ labelForOrdering(q, it) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pt-2">
+      <button type="button" class="px-3 py-2 rounded border mr-2" (click)="start()">Start</button>
+      <button type="button" class="px-3 py-2 rounded border mr-2" (click)="save()">Save</button>
+      <button type="button" class="px-4 py-2 rounded bg-blue-600 text-white" (click)="submit()">Submit</button>
+    </div>
+  </form>
+
+  <!-- Minimal authoring form (tutor/admin) -->
+  <div *ngIf="canEdit()" class="mt-6 p-4 border rounded space-y-3">
+    <div class="font-semibold">Add Question</div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-sm mb-1">Type</label>
+        <select class="border rounded px-3 py-2 w-full" [ngModel]="qType()" (ngModelChange)="qType.set($event)">
+          <optgroup label="Objective">
+            <option *ngFor="let o of objectiveOptions" [value]="o.value">{{ o.label }}</option>
+          </optgroup>
+          <optgroup label="Subjective">
+            <option *ngFor="let o of subjectiveOptions" [value]="o.value">{{ o.label }}</option>
+          </optgroup>
+          <optgroup label="Interactive">
+            <option *ngFor="let o of interactiveOptions" [value]="o.value">{{ o.label }}</option>
+          </optgroup>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Prompt</label>
+        <input class="border rounded px-3 py-2 w-full" [ngModel]="qPrompt()" (ngModelChange)="qPrompt.set($event)" />
+      </div>
+    </div>
+    <div *ngIf="qType()==='multiple_choice' || qType()==='multiple_select'" class="space-y-2">
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" [ngModel]="qAllowMultiple()" (ngModelChange)="qAllowMultiple.set($event)" /> Allow multiple (for multi-select)</label>
+      <label class="block text-sm mb-1">Choices (one per line, e.g. "A. Option 1")</label>
+      <textarea class="w-full border rounded px-3 py-2" rows="4" [ngModel]="qChoicesText()" (ngModelChange)="qChoicesText.set($event)"></textarea>
+    </div>
+    <div>
+      <label class="block text-sm mb-1">Advanced: Options JSON</label>
+      <textarea class="w-full border rounded px-3 py-2" rows="4" placeholder='{"choices":[{"key":"A","label":"..."}]}' [ngModel]="qOptionsJSON()" (ngModelChange)="qOptionsJSON.set($event)"></textarea>
+    </div>
+    <div>
+      <label class="block text-sm mb-1">Advanced: Answer JSON</label>
+      <textarea class="w-full border rounded px-3 py-2" rows="4" placeholder='{"key":"A"} or {"keys":["A","D"]}' [ngModel]="qAnswerJSON()" (ngModelChange)="qAnswerJSON.set($event)"></textarea>
+    </div>
+    <div class="flex items-center gap-3">
+      <button type="button" class="px-4 py-2 rounded bg-gray-900 text-white" [disabled]="creating()" (click)="createQuestion()">{{ creating() ? 'Creating…' : 'Create Question' }}</button>
+      <div class="text-sm text-gray-700">{{ createdMsg() }}</div>
+    </div>
+  </div>
+</div>
+<ng-template #loadingT>
+  <div class="p-6">Loading test…</div>
+</ng-template>

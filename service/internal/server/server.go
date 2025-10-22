@@ -3,7 +3,9 @@ package server
 import (
     "encoding/json"
     "fmt"
+    "math"
     "net/http"
+    "strconv"
     "strings"
     "time"
 
@@ -280,6 +282,16 @@ func New(opts Options) *fiber.App {
         CreatedBy string    `json:"createdByUserId" db:"created_by_user_id"`
         CreatedAt time.Time `json:"createdAt" db:"created_at"`
     }
+    type testQuestion struct {
+        ID         string          `json:"id" db:"id"`
+        TestID     string          `json:"testId" db:"test_id"`
+        QType      string          `json:"qtype" db:"qtype"`
+        Prompt     string          `json:"prompt" db:"prompt"`
+        Options    json.RawMessage `json:"options,omitempty" db:"options"`
+        Answer     json.RawMessage `json:"answer,omitempty" db:"answer"`
+        Points     int             `json:"points" db:"points"`
+        OrderIndex int             `json:"orderIndex" db:"order_index"`
+    }
     app.Get("/v1/tests", func(c *fiber.Ctx) error {
         if opts.DB == nil { return fiber.ErrInternalServerError }
         sid := c.Query("subject_id"); lid := c.Query("lesson_id")
@@ -307,6 +319,300 @@ func New(opts Options) *fiber.App {
             return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
         }
         return c.JSON(fiber.Map{"success": true, "data": out})
+    })
+
+    // Get a specific test with questions (if permitted)
+    app.Get("/v1/tests/:id", func(c *fiber.Ctx) error {
+        if opts.DB == nil { return fiber.ErrInternalServerError }
+        uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
+        id := c.Params("id")
+        var t test
+        if err := opts.DB.Get(&t, `SELECT id, school_id, subject_id, lesson_id, title, description, visibility, created_by_user_id, created_at FROM tests WHERE id=$1`, id); err != nil {
+            return fiber.ErrNotFound
+        }
+        // Permission check similar to search visibility for tests; also resolve classId and canEdit
+        var classID *string
+        _ = opts.DB.Get(&classID, `SELECT c.id FROM tests t
+            LEFT JOIN subjects sub ON sub.id=t.subject_id
+            LEFT JOIN classes c ON c.id=sub.class_id
+            LEFT JOIN lessons l ON l.id=t.lesson_id
+            LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+            LEFT JOIN classes c2 ON c2.id=sub2.class_id
+            WHERE t.id=$1 LIMIT 1`, id)
+        // If public, allow; else require tutor/enrolled/member
+        canEdit := false
+        if t.Visibility != "public" {
+            var allow bool
+            if classID != nil && *classID != "" {
+                // class tutor or enrolled
+                var tutorID string
+                _ = opts.DB.Get(&tutorID, `SELECT tutor_user_id FROM classes WHERE id=$1`, classID)
+                if tutorID == uid { allow = true }
+                if tutorID == uid { canEdit = true }
+                if !allow {
+                    var exists bool
+                    _ = opts.DB.Get(&exists, `SELECT EXISTS (SELECT 1 FROM class_enrollments WHERE class_id=$1 AND student_user_id=$2)`, classID, uid)
+                    if exists { allow = true }
+                }
+                if !allow {
+                    var sid *string
+                    _ = opts.DB.Get(&sid, `SELECT school_id FROM classes WHERE id=$1`, classID)
+                    if sid != nil && *sid != "" {
+                        allow, _ = auth.IsSchoolMember(opts.DB, *sid, uid)
+                        if !canEdit { canEdit, _ = auth.IsSchoolAdmin(opts.DB, *sid, uid) }
+                    }
+                }
+            }
+            if !allow { return fiber.ErrForbidden }
+        }
+        // Load questions
+        qs := []testQuestion{}
+        if err := opts.DB.Select(&qs, `SELECT id, test_id, qtype, prompt, COALESCE(options,'null'::jsonb) AS options, COALESCE(answer,'null'::jsonb) AS answer, points, order_index FROM test_questions WHERE test_id=$1 ORDER BY order_index, id`, id); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"test": t, "questions": qs, "classId": classID, "canEdit": canEdit}})
+    })
+
+    // Create a question under a test (tutor/school admin only)
+    type questionIn struct {
+        QType      string          `json:"qtype"`
+        Prompt     string          `json:"prompt"`
+        Options    json.RawMessage `json:"options"`
+        Answer     json.RawMessage `json:"answer"`
+        Points     *int            `json:"points"`
+        OrderIndex *int            `json:"orderIndex"`
+    }
+    app.Post("/v1/tests/:id/questions", func(c *fiber.Ctx) error {
+        if opts.DB == nil { return fiber.ErrInternalServerError }
+        uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
+        id := c.Params("id")
+        // Resolve related class for permission checks
+        var classID *string
+        _ = opts.DB.Get(&classID, `SELECT c.id FROM tests t
+            LEFT JOIN subjects sub ON sub.id=t.subject_id
+            LEFT JOIN classes c ON c.id=sub.class_id
+            LEFT JOIN lessons l ON l.id=t.lesson_id
+            LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+            LEFT JOIN classes c2 ON c2.id=sub2.class_id
+            WHERE t.id=$1 LIMIT 1`, id)
+        var allow bool
+        if classID != nil && *classID != "" {
+            allow, _ = auth.IsClassTutor(opts.DB, *classID, uid)
+            if !allow {
+                var sid *string
+                _ = opts.DB.Get(&sid, `SELECT school_id FROM classes WHERE id=$1`, classID)
+                if sid != nil && *sid != "" { allow, _ = auth.IsSchoolAdmin(opts.DB, *sid, uid) }
+            }
+        }
+        if !allow { return fiber.ErrForbidden }
+        var in questionIn; if err := c.BodyParser(&in); err != nil || strings.TrimSpace(in.QType)=="" || strings.TrimSpace(in.Prompt)=="" { return fiber.ErrBadRequest }
+        // Normalize frontend constants to backend qtype
+        qt := strings.ToLower(strings.TrimSpace(in.QType))
+        switch qt {
+        case "multiple_choice": qt = "mcq"
+        case "multiple_select": qt = "mcq" // require options.allowMultiple=true for multiple
+        case "true_false": qt = "truefalse"
+        case "fill_blank": qt = "fillblank"
+        case "short_answer": qt = "short"
+        case "drag_drop": qt = "dragdrop"
+        }
+        pts := 1; if in.Points != nil { pts = *in.Points }
+        ord := 0; if in.OrderIndex != nil { ord = *in.OrderIndex }
+        var out testQuestion
+        if err := opts.DB.Get(&out, `INSERT INTO test_questions (test_id, qtype, prompt, options, answer, points, order_index)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+            RETURNING id, test_id, qtype, prompt, COALESCE(options,'null'::jsonb) AS options, COALESCE(answer,'null'::jsonb) AS answer, points, order_index`, id, qt, in.Prompt, nullIfEmptyJSON(in.Options), nullIfEmptyJSON(in.Answer), pts, ord); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        return c.JSON(fiber.Map{"success": true, "data": out})
+    })
+
+    // --- Test Attempts ---
+    type attempt struct {
+        ID string `json:"id" db:"id"`
+        TestID string `json:"testId" db:"test_id"`
+        StudentUserID string `json:"studentUserId" db:"student_user_id"`
+        Score *float64 `json:"score,omitempty" db:"score"`
+        Status string `json:"status" db:"status"`
+        SubmittedAt *time.Time `json:"submittedAt,omitempty" db:"submitted_at"`
+        Responses json.RawMessage `json:"responses,omitempty" db:"responses"`
+        Grading json.RawMessage `json:"grading,omitempty" db:"grading"`
+    }
+
+    app.Post("/v1/tests/:id/attempts/start", func(c *fiber.Ctx) error {
+        if opts.DB == nil { return fiber.ErrInternalServerError }
+        uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
+        id := c.Params("id")
+        // Upsert-like: if existing in_progress, return it; else create
+        var row attempt
+        err = opts.DB.Get(&row, `SELECT id, test_id, student_user_id, score, status, submitted_at, COALESCE(responses,'null'::jsonb) AS responses, COALESCE(grading,'null'::jsonb) AS grading FROM test_attempts WHERE test_id=$1 AND student_user_id=$2`, id, uid)
+        if err == nil {
+            if row.Status == "in_progress" { return c.JSON(fiber.Map{"success": true, "data": row}) }
+            // existing submitted: create a new in_progress (one active at a time per test per user is typical; we'll replace)
+        }
+        if err := opts.DB.Get(&row, `INSERT INTO test_attempts (test_id, student_user_id, status) VALUES ($1,$2,'in_progress')
+            RETURNING id, test_id, student_user_id, score, status, submitted_at, COALESCE(responses,'null'::jsonb) AS responses, COALESCE(grading,'null'::jsonb) AS grading`, id, uid); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        return c.JSON(fiber.Map{"success": true, "data": row})
+    })
+
+    app.Patch("/v1/tests/:id/attempts/save", func(c *fiber.Ctx) error {
+        if opts.DB == nil { return fiber.ErrInternalServerError }
+        uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
+        id := c.Params("id")
+        var body struct{ Responses json.RawMessage `json:"responses"` }
+        if err := c.BodyParser(&body); err != nil { return fiber.ErrBadRequest }
+        if _, err := opts.DB.Exec(`UPDATE test_attempts SET responses=$1 WHERE test_id=$2 AND student_user_id=$3 AND status='in_progress'`, nullIfEmptyJSON(body.Responses), id, uid); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        return c.JSON(fiber.Map{"success": true})
+    })
+
+    app.Post("/v1/tests/:id/attempts/submit", func(c *fiber.Ctx) error {
+        if opts.DB == nil { return fiber.ErrInternalServerError }
+        uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
+        id := c.Params("id")
+        var body struct{ Responses map[string]any `json:"responses"` }
+        if err := c.BodyParser(&body); err != nil { return fiber.ErrBadRequest }
+        // Load questions for grading
+        var qs []struct{ ID, QType, Prompt string; Options, Answer json.RawMessage; Points, OrderIndex int }
+        if err := opts.DB.Select(&qs, `SELECT id, qtype, prompt, COALESCE(options,'null'::jsonb) AS options, COALESCE(answer,'null'::jsonb) AS answer, points, order_index FROM test_questions WHERE test_id=$1 ORDER BY order_index, id`, id); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        earned := 0.0
+        max := 0.0
+        details := map[string]any{}
+
+        // Helper decoders
+        getBool := func(v any) (bool, bool) { b, ok := v.(bool); if ok { return b, true }; if s, ok := v.(string); ok { return strings.ToLower(strings.TrimSpace(s))=="true", true }; return false, false }
+        getStr := func(v any) (string, bool) { if s, ok := v.(string); ok { return s, true }; return "", false }
+        getStrSlice := func(v any) []string { if v==nil { return nil }; if arr, ok := v.([]any); ok { out := []string{}; for _, x := range arr { if s, ok := x.(string); ok { out = append(out, s) } }; return out }; return nil }
+        getNum := func(v any) (float64, bool) { switch t:=v.(type){case float64: return t, true; case int: return float64(t), true; case string: if f, e := strconv.ParseFloat(strings.TrimSpace(t), 64); e==nil { return f, true }}; return 0, false }
+
+        for _, q := range qs {
+            // Only auto-grade objective types
+            qt := strings.ToLower(strings.TrimSpace(q.QType))
+            objective := map[string]bool{"mcq":true, "truefalse":true, "match":true, "ordering":true, "fillblank":true, "numeric":true}
+            if !objective[qt] { continue }
+            max += float64(q.Points)
+            resp := body.Responses[q.ID]
+            var opts map[string]any; _ = json.Unmarshal(q.Options, &opts)
+            var ans map[string]any; _ = json.Unmarshal(q.Answer, &ans)
+            correct := false
+            partial := 0.0
+            isMulti := false
+            switch qt {
+            case "mcq":
+                allowMultiple, _ := opts["allowMultiple"].(bool)
+                isMulti = allowMultiple
+                if allowMultiple {
+                    want := getStrSlice(ans["keys"])
+                    got := getStrSlice(resp)
+                    if len(want) > 0 {
+                        // partial via Jaccard index: |W∩G| / |W∪G|
+                        wset := map[string]bool{}; for _, k := range want { wset[k]=true }
+                        gset := map[string]bool{}; for _, k := range got { gset[k]=true }
+                        inter := 0.0; uni := 0.0
+                        // union keys
+                        ukeys := map[string]bool{}
+                        for k := range wset { ukeys[k]=true }
+                        for k := range gset { ukeys[k]=true }
+                        for k := range ukeys { uni += 1; if wset[k] && gset[k] { inter += 1 } }
+                        if uni > 0 { partial = inter / uni }
+                    }
+                } else {
+                    w, _ := getStr(ans["key"])
+                    g, _ := getStr(resp)
+                    correct = (w != "" && w == g)
+                }
+            case "truefalse":
+                w, _ := getBool(ans["value"])
+                g, _ := getBool(resp)
+                correct = (w == g)
+            case "match":
+                // answer.pairs: [[left,right],...]
+                pairsAny, _ := ans["pairs"].([]any)
+                want := map[string]string{}
+                for _, p := range pairsAny { if arr, ok := p.([]any); ok && len(arr)>=2 { l, _ := getStr(arr[0]); r, _ := getStr(arr[1]); if l != "" { want[l]=r } } }
+                // resp can be object { leftId: rightId }
+                got := map[string]string{}
+                if m, ok := resp.(map[string]any); ok { for lk, rv := range m { rs, _ := getStr(rv); got[lk]=rs } }
+                // score per-left correct
+                per := 0.0; total := float64(len(want))
+                if total > 0 {
+                    for l, r := range want { if got[l] == r { per += 1 } }
+                    partial = per / total
+                }
+            case "ordering":
+                // answer.order: [id1,id2,...]
+                want := getStrSlice(ans["order"])
+                got := getStrSlice(resp)
+                if len(want) > 1 && len(got) == len(want) {
+                    // adjacency-based partial: match adjacent pairs
+                    wp := map[string]string{}
+                    for i := 0; i < len(want)-1; i++ { wp[want[i]] = want[i+1] }
+                    matches := 0.0
+                    for i := 0; i < len(got)-1; i++ { if wp[got[i]] == got[i+1] { matches += 1 } }
+                    partial = matches / float64(len(want)-1)
+                    if partial == 1.0 { correct = true }
+                } else if len(want) > 0 && len(got) == len(want) {
+                    // single item or empty adjacency; require exact
+                    ok := true
+                    for i := range want { if want[i] != got[i] { ok=false; break } }
+                    correct = ok
+                }
+            case "fillblank":
+                // answer: { blankId: value }
+                want := map[string]string{}; for k, v := range ans { if s, ok := v.(string); ok { want[k]=s } }
+                got := map[string]string{}; if m, ok := resp.(map[string]any); ok { for k, v := range m { if s, ok := v.(string); ok { got[k]=s } } }
+                // case-insensitive by default; synonyms optional in options.blanks[*].synonyms
+                blanks, _ := opts["blanks"].([]any)
+                total := float64(len(want)); per := 0.0
+                if total > 0 {
+                    for _, bAny := range blanks {
+                        if b, ok := bAny.(map[string]any); ok {
+                            id, _ := getStr(b["id"])
+                            wantVal := strings.TrimSpace(strings.ToLower(want[id]))
+                            gotVal := strings.TrimSpace(strings.ToLower(got[id]))
+                            if wantVal == "" { continue }
+                            if gotVal == wantVal { per += 1; continue }
+                            if syn, ok := b["synonyms"].([]any); ok {
+                                for _, s := range syn { if ss, ok := s.(string); ok && strings.ToLower(strings.TrimSpace(ss)) == gotVal { per += 1; break } }
+                            }
+                        }
+                    }
+                    partial = per / total
+                }
+            case "numeric":
+                want, _ := getNum(ans["value"])
+                got, ok := getNum(resp)
+                if ok {
+                    tol := 0.0
+                    if r, ok := opts["tolerance"].(float64); ok { tol = r }
+                    if rng, ok := opts["range"].(map[string]any); ok {
+                        min, _ := getNum(rng["min"]); max, _ := getNum(rng["max"])
+                        correct = (got >= min && got <= max)
+                    } else {
+                        correct = (math.Abs(got - want) <= tol)
+                    }
+                }
+            }
+            // accumulate
+            if qt == "match" || qt == "fillblank" || (qt == "mcq" && isMulti) || qt == "ordering" { earned += float64(q.Points) * partial } else if correct { earned += float64(q.Points) }
+            details[q.ID] = map[string]any{"correct": correct, "partial": partial}
+        }
+        var score *float64
+        if max > 0 {
+            s := (earned / max) * 100.0
+            score = &s
+        }
+        gradingJSON, _ := json.Marshal(fiber.Map{"earned": earned, "max": max, "score": score})
+        respsJSON, _ := json.Marshal(body.Responses)
+        if _, err := opts.DB.Exec(`UPDATE test_attempts SET responses=$1, grading=$2, score=$3, status='submitted', submitted_at=now() WHERE test_id=$4 AND student_user_id=$5`, respsJSON, gradingJSON, score, id, uid); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"earned": earned, "max": max, "score": score}})
     })
 
     // --- Guardians ---
@@ -1008,19 +1314,42 @@ func New(opts Options) *fiber.App {
         like := "%" + q + "%"
         switch t {
         case "user":
+            // People search with privacy:
+            // - Always include verified tutors (private_tutors.status='approved')
+            // - Include "related" users only: classmates, class tutors, and members of the same schools
+            // - Match against display name, email, uid, and school name(s) tied to the user (via membership or class enrollments)
             type row struct{ UserID string `json:"userId" db:"user_id"`; DisplayName *string `json:"displayName,omitempty" db:"display_name"` }
             rows := []row{}
             if err := opts.DB.Select(&rows, `
                 WITH related(uid) AS (
                   SELECT c.tutor_user_id FROM classes c JOIN class_enrollments e ON e.class_id=c.id AND e.student_user_id=$1
                   UNION
-                  SELECT e2.student_user_id FROM class_enrollments e2 WHERE e2.class_id IN (SELECT e.class_id FROM class_enrollments e WHERE e.student_user_id=$1)
+                  SELECT e2.student_user_id FROM class_enrollments e2 WHERE e2.class_id IN (
+                    SELECT e.class_id FROM class_enrollments e WHERE e.student_user_id=$1
+                  )
                   UNION
-                  SELECT m2.user_id FROM school_members m1 JOIN school_members m2 ON m2.school_id=m1.school_id WHERE m1.user_id=$1 AND m1.status='active' AND m2.status='active'
+                  SELECT m2.user_id FROM school_members m1
+                    JOIN school_members m2 ON m2.school_id=m1.school_id
+                  WHERE m1.user_id=$1 AND m1.status='active' AND m2.status='active'
+                ),
+                approved_tutors(uid) AS (
+                  SELECT user_id FROM private_tutors WHERE status='approved'
+                ),
+                cand(uid) AS (
+                  SELECT uid FROM related
+                  UNION
+                  SELECT uid FROM approved_tutors
                 )
-                SELECT r.uid AS user_id, up.display_name
-                FROM related r LEFT JOIN user_profiles up ON up.user_id=r.uid
-                WHERE ($2='' OR up.display_name ILIKE $3 OR r.uid ILIKE $3)
+                SELECT c.uid AS user_id, up.display_name
+                FROM cand c
+                LEFT JOIN user_profiles up ON up.user_id=c.uid
+                LEFT JOIN school_members sm ON sm.user_id=c.uid
+                LEFT JOIN schools sch ON sch.id=sm.school_id
+                LEFT JOIN class_enrollments e ON e.student_user_id=c.uid
+                LEFT JOIN classes cl ON cl.id=e.class_id
+                LEFT JOIN schools sch2 ON sch2.id=cl.school_id
+                WHERE ($2='' OR up.display_name ILIKE $3 OR COALESCE(up.email,'') ILIKE $3 OR c.uid ILIKE $3 OR sch.name ILIKE $3 OR sch2.name ILIKE $3)
+                GROUP BY c.uid, up.display_name
                 LIMIT 20`, uid, q, like); err != nil {
                 return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
             }
@@ -1058,9 +1387,9 @@ func New(opts Options) *fiber.App {
             }
             return c.JSON(fiber.Map{"success": true, "data": rows})
         case "lesson":
-            type row struct{ ID string `json:"id" db:"id"`; Title string `json:"title" db:"title"` }
+            type row struct{ ID string `json:"id" db:"id"`; Title string `json:"title" db:"title"`; ClassID string `json:"classId" db:"class_id"` }
             rows := []row{}
-            if err := opts.DB.Select(&rows, `SELECT l.id, l.title FROM lessons l
+            if err := opts.DB.Select(&rows, `SELECT l.id, l.title, c.id AS class_id FROM lessons l
                 JOIN subjects sub ON sub.id=l.subject_id
                 JOIN classes c ON c.id=sub.class_id
                 LEFT JOIN class_enrollments e ON e.class_id=c.id AND e.student_user_id=$1
@@ -1072,15 +1401,21 @@ func New(opts Options) *fiber.App {
             }
             return c.JSON(fiber.Map{"success": true, "data": rows})
         case "test":
-            type row struct{ ID string `json:"id" db:"id"`; Title string `json:"title" db:"title"` }
+            type row struct{ ID string `json:"id" db:"id"`; Title string `json:"title" db:"title"`; ClassID *string `json:"classId,omitempty" db:"class_id"` }
             rows := []row{}
-            if err := opts.DB.Select(&rows, `SELECT t.id, t.title FROM tests t
+            if err := opts.DB.Select(&rows, `SELECT t.id, t.title,
+                    COALESCE(c.id, c2.id) AS class_id
+                FROM tests t
                 LEFT JOIN subjects sub ON sub.id=t.subject_id
                 LEFT JOIN classes c ON c.id=sub.class_id
-                LEFT JOIN class_enrollments e ON e.class_id=c.id AND e.student_user_id=$1
-                LEFT JOIN schools s ON s.id=c.school_id
+                LEFT JOIN lessons l ON l.id=t.lesson_id
+                LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+                LEFT JOIN classes c2 ON c2.id=sub2.class_id
+                LEFT JOIN class_enrollments e ON e.class_id=COALESCE(c.id, c2.id) AND e.student_user_id=$1
+                LEFT JOIN schools s ON s.id=COALESCE(c.school_id, c2.school_id)
                 LEFT JOIN school_members m ON m.school_id=s.id AND m.user_id=$1 AND m.status='active'
-                WHERE (t.visibility='public' OR c.tutor_user_id=$1 OR e.id IS NOT NULL OR m.id IS NOT NULL) AND ($2='' OR t.title ILIKE $3)
+                WHERE (t.visibility='public' OR COALESCE(c.tutor_user_id, c2.tutor_user_id)=$1 OR e.id IS NOT NULL OR m.id IS NOT NULL)
+                  AND ($2='' OR t.title ILIKE $3)
                 ORDER BY t.created_at DESC LIMIT 20`, uid, q, like); err != nil {
                 return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
             }
@@ -1094,3 +1429,4 @@ func New(opts Options) *fiber.App {
 }
 
 func nullIfEmptyJSON(j json.RawMessage) any { if len(j)==0 || string(j)=="null" { return nil }; return j }
+

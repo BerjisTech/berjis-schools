@@ -1,7 +1,5 @@
 import { bootstrapApplication } from '@angular/platform-browser';
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterModule, Routes, RouterLink, provideRouter } from '@angular/router';
+import { Routes, provideRouter } from '@angular/router';
 import { HomePage } from './app/pages/home.page';
 import { ClassesPage } from './app/pages/classes.page';
 import { SubjectsPage } from './app/pages/subjects.page';
@@ -14,19 +12,15 @@ import { ModerationPage } from './app/pages/moderation.page';
 import { PlatformModerationPage } from './app/pages/platform-moderation.page';
 import { TutorReviewPage } from './app/pages/tutor-review.page';
 import { SchoolReviewPage } from './app/pages/school-review.page';
+import { CourseOverviewComponent } from './app/components/course/course-overview.component';
+import { LessonViewComponent } from './app/components/course/lesson-view.component';
+import { TestViewComponent } from './app/components/course/test-view.component';
+import { CreateCoursePage } from './app/pages/create-course.page';
+import { AppComponent } from './app/app.component';
+import { SearchPage } from './app/pages/search.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
-
-@Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [CommonModule, RouterModule, RouterLink],
-  template: `
-    <router-outlet></router-outlet>
-  `
-})
-class AppComponent {}
 const routes: Routes = [
   { path: '', loadComponent: () => Promise.resolve(HomePage) },
   { path: 'classes', loadComponent: () => Promise.resolve(ClassesPage) },
@@ -40,6 +34,11 @@ const routes: Routes = [
   { path: 'moderation/platform', loadComponent: () => Promise.resolve(PlatformModerationPage) },
   { path: 'moderation/tutors', loadComponent: () => Promise.resolve(TutorReviewPage) },
   { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage) },
+  { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage) },
+  { path: 'course/:id', component: CourseOverviewComponent },
+  { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent },
+  { path: 'course/:id/tests/:testId', component: TestViewComponent },
+  { path: 'search', loadComponent: () => Promise.resolve(SearchPage) },
 ];
 
 bootstrapApplication(AppComponent, { providers: [provideRouter(routes)] }).catch(err => console.error(err));
