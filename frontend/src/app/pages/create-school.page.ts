@@ -19,6 +19,7 @@ export class CreateSchoolPage implements OnInit {
   tutorSearchQuery = '';
   tutorResults: Array<{ userId: string; displayName?: string|null }> = [];
   finance: any = { payoutMethod: '', currency: '', bankDetails: '', revenueModel: '', taxDocsUrl: '', bankStatementUrl: '' };
+  financeFiles: Record<string, File|null> = { taxDocsUrl: null, bankStatementUrl: null } as any;
   curriculum: any = { subjects: '', targets: '', format: '', languages: '', outlineUrl: '', sampleUrl: '', demoUrl: '' };
   agreements: any = { partnership: false, privacy: false, revenueSplit: false, codeOfConduct: false, quality: false, antiFraud: false, refund: false };
   extras: any = { mediaUrls: '', testimonials: '', bannerUrl: '', subdomain: '', themeColor: '', integrations: '', partnershipType: '' };
@@ -89,6 +90,13 @@ export class CreateSchoolPage implements OnInit {
     const file = (input.files && input.files[0]) || null;
     this.verifyFiles[key] = file;
     if (file) this.verify[key] = file.name;
+  }
+
+  onFinanceFileChange(key: string, ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = (input.files && input.files[0]) || null;
+    this.financeFiles[key] = file;
+    if (file) this.finance[key] = file.name;
   }
 
   fieldsMissingForStep(step: number): string[] {
@@ -208,6 +216,19 @@ export class CreateSchoolPage implements OnInit {
       if (!draft) {
         const missing = this.missingRequired();
         if (missing.length) throw new Error(`Missing required fields: ${missing.join(', ')}`);
+      }
+      // Upload selected PDFs locally and replace URLs
+      const upload = async (f: File): Promise<string> => {
+        const form = new FormData(); form.append('file', f);
+        const r = await fetch(`${urlFor('schools-api')}/v1/uploads`, { method: 'POST', credentials: 'include', body: form });
+        const j = await r.json(); if (!j?.success) throw new Error(j?.message || 'Upload failed');
+        return j.data?.url || '';
+      };
+      for (const k of Object.keys(this.verifyFiles)) {
+        const f = this.verifyFiles[k]; if (f) { this.verify[k] = await upload(f) }
+      }
+      for (const k of Object.keys(this.financeFiles)) {
+        const f = this.financeFiles[k]; if (f) { this.finance[k] = await upload(f) }
       }
       const res = await fetch(`${urlFor('schools-api')}/v1/schools/apply`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },

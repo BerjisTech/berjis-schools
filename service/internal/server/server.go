@@ -5,6 +5,8 @@ import (
     "fmt"
     "math"
     "net/http"
+    "os"
+    "path/filepath"
     "strconv"
     "strings"
     "time"
@@ -13,6 +15,7 @@ import (
     "github.com/gofiber/fiber/v2"
     "github.com/gofiber/fiber/v2/middleware/cors"
     "github.com/jmoiron/sqlx"
+    "github.com/google/uuid"
 )
 
 type Options struct {
@@ -36,6 +39,38 @@ func New(opts Options) *fiber.App {
     }))
 
     app.Get("/v1/health", func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"success": true}) })
+
+    // Local uploads directory and static serving
+    uploadDir := strings.TrimSpace(os.Getenv("UPLOAD_DIR"))
+    if uploadDir == "" { uploadDir = "/tmp/uploads" }
+    _ = os.MkdirAll(uploadDir, 0o755)
+    app.Static("/uploads", uploadDir)
+
+    // Simple local file upload endpoint
+    app.Post("/v1/uploads", func(c *fiber.Ctx) error {
+        fh, err := c.FormFile("file")
+        if err != nil { return fiber.ErrBadRequest }
+        // Allow only PDFs for now
+        if !strings.EqualFold(filepath.Ext(fh.Filename), ".pdf") {
+            // Try content-type if available
+            if ct := fh.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/pdf") {
+                return c.Status(400).JSON(fiber.Map{"success": false, "message": "Only PDF uploads are allowed"})
+            }
+        }
+        day := time.Now().Format("20060102")
+        subdir := filepath.Join(uploadDir, day)
+        if err := os.MkdirAll(subdir, 0o755); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        name := uuid.New().String() + strings.ToLower(filepath.Ext(fh.Filename))
+        dest := filepath.Join(subdir, name)
+        if err := c.SaveFile(fh, dest); err != nil {
+            return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+        }
+        // Public path clients can use (served by this service)
+        urlPath := "/uploads/" + day + "/" + name
+        return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"url": urlPath, "filename": fh.Filename}})
+    })
 
     // Auth verify against Core API
     getUserID := func(c *fiber.Ctx) (string, error) {

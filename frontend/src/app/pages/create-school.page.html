@@ -187,12 +187,12 @@
           </select>
         </div>
         <div>
-          <label class="block text-sm mb-1">Tax compliance documents (URL, optional)</label>
-          <input [(ngModel)]="finance.taxDocsUrl" name="finance_taxDocsUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Tax compliance documents (PDF, optional)</label>
+          <input type="file" accept="application/pdf" (change)="onFinanceFileChange('taxDocsUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
         </div>
         <div>
-          <label class="block text-sm mb-1">Bank statement (URL, optional)</label>
-          <input [(ngModel)]="finance.bankStatementUrl" name="finance_bankStatementUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <label class="block text-sm mb-1">Bank statement (PDF, optional)</label>
+          <input type="file" accept="application/pdf" (change)="onFinanceFileChange('bankStatementUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
         </div>
       </div>
     </section>
