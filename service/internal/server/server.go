@@ -46,17 +46,51 @@ func New(opts Options) *fiber.App {
     _ = os.MkdirAll(uploadDir, 0o755)
     app.Static("/uploads", uploadDir)
 
-    // Simple local file upload endpoint
+    // Upload feature flags
+    uploadEnabled := true
+    if v := strings.TrimSpace(os.Getenv("UPLOAD_ENABLED")); v != "" { uploadEnabled = strings.EqualFold(v, "true") || v == "1" }
+    proxyUploadURL := strings.TrimSpace(os.Getenv("FILE_UPLOAD_PROXY_URL"))
+    maxBytes := int64(10 * 1024 * 1024) // 10MB default
+    if v := strings.TrimSpace(os.Getenv("UPLOAD_MAX_BYTES")); v != "" { if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 { maxBytes = n } }
+
+    // Simple upload endpoint (local or proxy)
     app.Post("/v1/uploads", func(c *fiber.Ctx) error {
+        if !uploadEnabled && proxyUploadURL == "" { return c.Status(403).JSON(fiber.Map{"success": false, "message": "Uploads are disabled"}) }
         fh, err := c.FormFile("file")
-        if err != nil { return fiber.ErrBadRequest }
-        // Allow only PDFs for now
+        if err != nil { return c.Status(400).JSON(fiber.Map{"success": false, "message": "Missing file"}) }
+        // Type check PDF
         if !strings.EqualFold(filepath.Ext(fh.Filename), ".pdf") {
-            // Try content-type if available
             if ct := fh.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/pdf") {
                 return c.Status(400).JSON(fiber.Map{"success": false, "message": "Only PDF uploads are allowed"})
             }
         }
+        // Size limit
+        if fh.Size > 0 && fh.Size > maxBytes { return c.Status(400).JSON(fiber.Map{"success": false, "message": fmt.Sprintf("File too large (max %d bytes)", maxBytes)}) }
+
+        // Proxy mode
+        if proxyUploadURL != "" {
+            file, err := fh.Open(); if err != nil { return fiber.ErrBadRequest }
+            defer file.Close()
+            // Build multipart request
+            var b bytes.Buffer
+            w := multipart.NewWriter(&b)
+            part, err := w.CreateFormFile("file", fh.Filename)
+            if err != nil { return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()}) }
+            if _, err := io.Copy(part, file); err != nil { return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()}) }
+            w.Close()
+            req, _ := http.NewRequest("POST", proxyUploadURL, &b)
+            req.Header.Set("Content-Type", w.FormDataContentType())
+            if v := c.Get("Authorization"); v != "" { req.Header.Set("Authorization", v) }
+            client := &http.Client{ Timeout: 15 * time.Second }
+            resp, err := client.Do(req)
+            if err != nil { return c.Status(502).JSON(fiber.Map{"success": false, "message": err.Error()}) }
+            defer resp.Body.Close()
+            var out map[string]any
+            _ = json.NewDecoder(resp.Body).Decode(&out)
+            return c.Status(resp.StatusCode).JSON(out)
+        }
+
+        // Local save
         day := time.Now().Format("20060102")
         subdir := filepath.Join(uploadDir, day)
         if err := os.MkdirAll(subdir, 0o755); err != nil {
@@ -67,7 +101,6 @@ func New(opts Options) *fiber.App {
         if err := c.SaveFile(fh, dest); err != nil {
             return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
         }
-        // Public path clients can use (served by this service)
         urlPath := "/uploads/" + day + "/" + name
         return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"url": urlPath, "filename": fh.Filename}})
     })

@@ -29,6 +29,8 @@ export class CreateSchoolPage implements OnInit {
   steps = ['School Info','Verification','Staff & Tutors','Financial','Curriculum','Agreements','Extras','Review & Submit'];
   saving = false;
   message = '';
+  uploadError = '';
+  uploading = false;
   success = false;
   status: 'draft'|'pending'|'approved'|'rejected'|null = null;
   statusLine = '';
@@ -88,6 +90,7 @@ export class CreateSchoolPage implements OnInit {
   onVerifyFileChange(key: string, ev: Event) {
     const input = ev.target as HTMLInputElement;
     const file = (input.files && input.files[0]) || null;
+    this.uploadError = '';
     this.verifyFiles[key] = file;
     if (file) this.verify[key] = file.name;
   }
@@ -95,6 +98,7 @@ export class CreateSchoolPage implements OnInit {
   onFinanceFileChange(key: string, ev: Event) {
     const input = ev.target as HTMLInputElement;
     const file = (input.files && input.files[0]) || null;
+    this.uploadError = '';
     this.financeFiles[key] = file;
     if (file) this.finance[key] = file.name;
   }
@@ -218,18 +222,25 @@ export class CreateSchoolPage implements OnInit {
         if (missing.length) throw new Error(`Missing required fields: ${missing.join(', ')}`);
       }
       // Upload selected PDFs locally and replace URLs
+      const maxBytes = 10 * 1024 * 1024; // 10MB client guard
       const upload = async (f: File): Promise<string> => {
+        if (f.size > maxBytes) { throw new Error(`File too large. Max is ${maxBytes} bytes`) }
+        if (!/\.pdf$/i.test(f.name)) { throw new Error('Only PDF files are allowed') }
         const form = new FormData(); form.append('file', f);
         const r = await fetch(`${urlFor('schools-api')}/v1/uploads`, { method: 'POST', credentials: 'include', body: form });
         const j = await r.json(); if (!j?.success) throw new Error(j?.message || 'Upload failed');
         return j.data?.url || '';
       };
-      for (const k of Object.keys(this.verifyFiles)) {
-        const f = this.verifyFiles[k]; if (f) { this.verify[k] = await upload(f) }
-      }
-      for (const k of Object.keys(this.financeFiles)) {
-        const f = this.financeFiles[k]; if (f) { this.finance[k] = await upload(f) }
-      }
+      this.uploading = true;
+      try {
+        for (const k of Object.keys(this.verifyFiles)) {
+          const f = this.verifyFiles[k]; if (f) { this.verify[k] = await upload(f) }
+        }
+        for (const k of Object.keys(this.financeFiles)) {
+          const f = this.financeFiles[k]; if (f) { this.finance[k] = await upload(f) }
+        }
+      } catch (e:any) { this.uploadError = e?.message || 'Upload failed'; throw e }
+      finally { this.uploading = false }
       const res = await fetch(`${urlFor('schools-api')}/v1/schools/apply`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

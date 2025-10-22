@@ -87,22 +87,27 @@
     <section class="space-y-3" *ngIf="step===1">
       <h3 class="font-semibold">Verification Documents</h3>
       <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(1).length">Required: {{ fieldsMissingForStep(1).join(', ') }}</div>
+      <div class="text-xs text-red-700" *ngIf="uploadError">{{ uploadError }}</div>
       <div class="grid gap-3 md:grid-cols-2">
         <div>
           <label class="block text-sm mb-1">Business registration certificate (PDF)</label>
           <input type="file" accept="application/pdf" (change)="onVerifyFileChange('registrationCertUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <div class="text-xs mt-1" *ngIf="verify.registrationCertUrl">Selected: <a [href]="urlFor('schools-api') + verify.registrationCertUrl" target="_blank">{{ verify.registrationCertUrl }}</a></div>
         </div>
         <div>
           <label class="block text-sm mb-1">Tax identification/PIN (PDF)</label>
           <input type="file" accept="application/pdf" (change)="onVerifyFileChange('taxPinUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <div class="text-xs mt-1" *ngIf="verify.taxPinUrl">Selected: <a [href]="urlFor('schools-api') + verify.taxPinUrl" target="_blank">{{ verify.taxPinUrl }}</a></div>
         </div>
         <div>
           <label class="block text-sm mb-1">Proof of address (PDF)</label>
           <input type="file" accept="application/pdf" (change)="onVerifyFileChange('proofAddressUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <div class="text-xs mt-1" *ngIf="verify.proofAddressUrl">Selected: <a [href]="urlFor('schools-api') + verify.proofAddressUrl" target="_blank">{{ verify.proofAddressUrl }}</a></div>
         </div>
         <div>
           <label class="block text-sm mb-1">Founder/admin ID (PDF)</label>
           <input type="file" accept="application/pdf" (change)="onVerifyFileChange('founderIdUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
+          <div class="text-xs mt-1" *ngIf="verify.founderIdUrl">Selected: <a [href]="urlFor('schools-api') + verify.founderIdUrl" target="_blank">{{ verify.founderIdUrl }}</a></div>
         </div>
         <div>
           <label class="block text-sm mb-1">Authorization letter (optional)</label>
