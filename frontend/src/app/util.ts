@@ -1,8 +1,8 @@
 export function detectRootDomain(hostname: string): string {
   const m = hostname.match(/(^|\.)berjis\.(test|tech|com)$/i);
   if (m) return `berjis.${m[2].toLowerCase()}`;
-  // fallback to dev
-  return 'berjis.test';
+  // fallback
+  return 'berjis.tech';
 }
 
 export function urlFor(sub: 'api'|'schools-api'|'schools', proto = window.location.protocol): string {

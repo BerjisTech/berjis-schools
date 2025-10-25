@@ -9,7 +9,7 @@ async function verifyAuth(): Promise<boolean> {
       const a = document.createElement('a'); a.href = root;
       const host = a.hostname;
       const m = host.match(/(^|\.)berjis\.(test|tech|com)$/i);
-      const rootDomain = m ? `berjis.${m[2].toLowerCase()}` : 'berjis.test';
+      const rootDomain = m ? `berjis.${m[2].toLowerCase()}` : 'berjis.tech';
       return `${window.location.protocol}//api.${rootDomain}/v1/auth/verify`;
     })(), { credentials: 'include' });
     const j = await res.json();
