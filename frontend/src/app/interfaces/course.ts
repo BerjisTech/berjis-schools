@@ -75,6 +75,10 @@ export interface Course {
   priceCents?: number;
   visibility?: 'school' | 'private' | 'public';
   tutorUserId?: string;
+  studentCount?: number;
+  subjectCount?: number;
+  lessonCount?: number;
+  testCount?: number;
   subjects?: Subject[];
 }
 

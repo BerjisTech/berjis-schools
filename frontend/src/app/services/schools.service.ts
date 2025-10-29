@@ -3,7 +3,20 @@ import { urlFor, verifySession } from '../../app/util';
 import { Course, Lesson, Subject, TestItem, TestQuestion, UserRef } from '../interfaces/course';
 import { SchoolInvite, SchoolOverview, SchoolSummary } from '../interfaces/school';
 
-interface ClassItemApi { id: string; title: string; description?: string | null; tutor_user_id?: string; visibility?: string; is_paid?: boolean; price_cents?: number }
+interface ClassItemApi {
+  id: string;
+  title: string;
+  description?: string | null;
+  tutor_user_id?: string;
+  visibility?: string;
+  is_paid?: boolean;
+  price_cents?: number;
+  student_count?: number;
+  subject_count?: number;
+  lesson_count?: number;
+  test_count?: number;
+  school_id?: string | null;
+}
 interface SubjectApi { id: string; class_id: string; title: string; description?: string | null; order_index: number }
 interface LessonApi { id: string; subject_id: string; title: string; type: string; content?: any; order_index: number; is_free: boolean }
 interface TestApi { id: string; school_id?: string | null; subject_id?: string | null; lesson_id?: string | null; title: string; description?: string | null; visibility: string; created_by_user_id?: string; created_at?: string }
@@ -16,6 +29,13 @@ export class SchoolsService {
 
   async listCourses(): Promise<Course[]> {
     const res = await fetch(`${this.api}/v1/classes`, { credentials: 'include' });
+    const j = await res.json();
+    const rows: ClassItemApi[] = j?.data ?? [];
+    return rows.map(this.mapClassToCourse);
+  }
+
+  async listMyCourses(): Promise<Course[]> {
+    const res = await fetch(`${this.api}/v1/classes?mine=1`, { credentials: 'include' });
     const j = await res.json();
     const rows: ClassItemApi[] = j?.data ?? [];
     return rows.map(this.mapClassToCourse);
@@ -104,6 +124,10 @@ export class SchoolsService {
     priceCents: r.price_cents ?? 0,
     visibility: (r.visibility as any) ?? 'public',
     tutorUserId: r.tutor_user_id,
+    studentCount: r.student_count,
+    subjectCount: (r as any).subject_count ?? undefined,
+    lessonCount: (r as any).lesson_count ?? undefined,
+    testCount: (r as any).test_count ?? undefined,
   });
 
   private mapLesson = (r: LessonApi): Lesson => {
@@ -370,5 +394,21 @@ export class SchoolsService {
       this.currentUserIdCache = null;
       return null;
     }
+  }
+
+  async updateCourse(courseId: string, payload: { title?: string; description?: string; visibility?: 'public'|'private'|'school'; isPaid?: boolean; priceCents?: number }): Promise<boolean> {
+    const body: any = {};
+    if (payload.title !== undefined) body.title = payload.title;
+    if (payload.description !== undefined) body.description = payload.description;
+    if (payload.visibility !== undefined) body.visibility = payload.visibility;
+    if (payload.isPaid !== undefined) body.isPaid = payload.isPaid;
+    if (payload.priceCents !== undefined) body.priceCents = payload.priceCents;
+    const res = await fetch(`${this.api}/v1/classes/${courseId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return res.ok;
   }
 }

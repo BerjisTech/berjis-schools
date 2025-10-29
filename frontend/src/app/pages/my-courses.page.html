@@ -1,0 +1,137 @@
+<div class="min-h-screen bg-slate-50 pb-12">
+  <header class="max-w-6xl mx-auto px-6 md:px-8 py-10">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-semibold text-slate-900">My authored courses</h1>
+        <p class="text-sm text-slate-600 mt-2 max-w-2xl">Monitor private, school, and public offerings. Tweak visibility, pricing, and keep tabs on lesson and assessment coverage.</p>
+      </div>
+      <div class="flex gap-3">
+        <select class="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm"
+          [ngModel]="filteredVisibility()" (ngModelChange)="filteredVisibility.set($event)">
+          <option value="all">All visibility</option>
+          <option value="public">Public courses</option>
+          <option value="private">Private cohorts</option>
+          <option value="school">School programs</option>
+        </select>
+        <a routerLink="/course/create" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-700 text-white text-sm shadow-sm">
+          <span class="material-symbols-outlined text-base">add</span>
+          New course
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <section class="max-w-6xl mx-auto px-6 md:px-8">
+    <div *ngIf="toast() as t" class="mb-4 flex items-center justify-between rounded-xl border px-4 py-3 text-sm"
+      [class.bg-emerald-50]="t.kind==='success'" [class.border-emerald-200]="t.kind==='success'" [class.text-emerald-800]="t.kind==='success'"
+      [class.bg-rose-50]="t.kind==='error'" [class.border-rose-200]="t.kind==='error'" [class.text-rose-700]="t.kind==='error'">
+      <span>{{ t.text }}</span>
+      <button class="text-xs uppercase tracking-wide" (click)="dismissToast()">Dismiss</button>
+    </div>
+
+    <div *ngIf="loading()" class="p-6 text-sm text-slate-500">Loading your courses…</div>
+
+    <div *ngIf="!loading() && !filteredCourses().length" class="p-6 rounded-2xl border border-dashed border-slate-300 bg-white text-sm text-slate-500">
+      You haven’t published any courses yet. <a routerLink="/course/create" class="text-blue-700">Create your first course</a>.
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6" *ngIf="!loading() && filteredCourses().length">
+      <div *ngFor="let course of filteredCourses()" class="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-wide text-slate-500">{{ course.visibility | titlecase }}</div>
+            <h2 class="text-xl font-semibold text-slate-900 mt-1">{{ course.title || course.name }}</h2>
+            <p class="text-sm text-slate-600 mt-1 line-clamp-3">{{ course.description || 'No description yet.' }}</p>
+          </div>
+          <span class="px-2 py-1 rounded-full text-xs font-medium"
+            [class.bg-emerald-50]="!course.isPaid" [class.text-emerald-700]="!course.isPaid"
+            [class.bg-indigo-50]="course.isPaid" [class.text-indigo-700]="course.isPaid">
+            {{ course.isPaid ? ('KES ' + ((course.priceCents ?? 0) / 100 | number:'1.0-0')) : 'Free' }}
+          </span>
+        </div>
+        <div class="grid grid-cols-3 gap-3 text-xs">
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+            <div class="text-slate-500 uppercase tracking-wide">Subjects</div>
+            <div class="text-lg font-semibold text-slate-900">{{ course.metrics.subjectCount }}</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+            <div class="text-slate-500 uppercase tracking-wide">Lessons</div>
+            <div class="text-lg font-semibold text-slate-900">{{ course.metrics.lessonCount }}</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+            <div class="text-slate-500 uppercase tracking-wide">Assessments</div>
+            <div class="text-lg font-semibold text-slate-900">{{ course.metrics.testCount }}</div>
+          </div>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-slate-700">Revenue (coming soon)</span>
+            <span class="text-slate-500">KES --</span>
+          </div>
+          <p class="mt-1">We’ll surface payouts, enrollments, and coupon insights here.</p>
+        </div>
+        <div class="flex items-center justify-between text-xs text-slate-500">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-base text-blue-600">groups</span>
+            {{ course.studentCount ?? 0 }} enrolled
+          </div>
+          <div class="flex gap-3">
+            <a [routerLink]="['/course', course.id]" class="inline-flex items-center gap-1 text-blue-700">Open<span class="material-symbols-outlined text-xs">north_east</span></a>
+            <button class="inline-flex items-center gap-1 text-slate-600 hover:text-blue-700" (click)="openEdit(course)">Pricing & visibility</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div *ngIf="selectedCourseId() && editPayload() as payload" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center px-4">
+    <div class="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200 p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900">Update course settings</h3>
+          <p class="text-xs text-slate-500 mt-1">Control visibility and pricing for this course.</p>
+        </div>
+        <button class="text-xs uppercase tracking-wide text-slate-500" (click)="cancelEdit()">Close</button>
+      </div>
+      <div class="space-y-4 text-sm">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Title</label>
+          <input class="w-full border border-slate-200 rounded-xl px-3 py-2" [(ngModel)]="payload.title" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Description</label>
+          <textarea class="w-full border border-slate-200 rounded-xl px-3 py-2" rows="3" [(ngModel)]="payload.description"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Visibility</label>
+            <select class="w-full border border-slate-200 rounded-xl px-3 py-2"
+              [(ngModel)]="payload.visibility">
+              <option value="public">Public - discoverable by everyone</option>
+              <option value="private">Private - invite only</option>
+              <option value="school">School - visible to your school community</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Pricing</label>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 text-xs">
+                <input type="checkbox" [(ngModel)]="payload.isPaid" />
+                Paid course
+              </label>
+              <input type="number" class="w-28 border border-slate-200 rounded-xl px-2 py-1 text-sm"
+                [(ngModel)]="payload.priceCents" [disabled]="!payload.isPaid" />
+              <span class="text-xs text-slate-500">KES (cents)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3">
+        <button class="px-4 py-2 rounded-xl border border-slate-200 text-sm" (click)="cancelEdit()">Cancel</button>
+        <button class="px-4 py-2 rounded-xl bg-blue-700 text-white text-sm" (click)="saveCourse()" [disabled]="saving()">
+          {{ saving() ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

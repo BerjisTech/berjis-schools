@@ -59,9 +59,9 @@ export class HomePage implements OnInit {
   ];
 
   quickActions = [
-    { label: 'Create course', href: '/course/create', icon: 'auto_stories', accent: 'bg-rose-50 text-rose-700' },
+    { label: 'My authored courses', href: '/courses/mine', icon: 'dashboard_customize', accent: 'bg-indigo-50 text-indigo-700' },
     { label: 'Manage school staff', href: '/schools/staff', icon: 'group', accent: 'bg-emerald-50 text-emerald-700' },
-    { label: 'Explore classes', href: '/classes', icon: 'explore', accent: 'bg-orange-50 text-orange-700' }
+    { label: 'Explore classes', href: '/classes', icon: 'travel_explore', accent: 'bg-sky-50 text-sky-700' }
   ];
 
   async ngOnInit() {
@@ -146,5 +146,4 @@ export class HomePage implements OnInit {
     }
   }
 }
-
 

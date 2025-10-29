@@ -1,32 +1,35 @@
 <div *ngIf="authed(); else guest" class="flex min-h-screen bg-slate-50">
   <aside *ngIf="showSidebar()" class="hidden lg:flex lg:flex-col w-64 border-r border-slate-200 bg-white/80 backdrop-blur-lg p-5 space-y-6 shadow-sm">
     <div class="flex items-center gap-3">
-      <span class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-semibold">Bs</span>
+      <span class="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center font-semibold">Bs</span>
       <div>
         <div class="text-sm font-semibold text-slate-900">Berjis Schools</div>
         <div class="text-xs text-slate-500">Control centre</div>
       </div>
     </div>
     <nav class="space-y-1 text-sm">
-      <a routerLink="/" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">space_dashboard</span>Home
       </a>
-      <a routerLink="/classes" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/classes" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">auto_stories</span>Courses
       </a>
-      <a routerLink="/subjects" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/courses/mine" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
+        <span class="material-symbols-outlined text-base">dashboard_customize</span>My authored courses
+      </a>
+      <a routerLink="/subjects" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">inventory_2</span>Subjects
       </a>
-      <a routerLink="/lessons" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/lessons" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">play_circle</span>Lessons
       </a>
-      <a routerLink="/tests" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/tests" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">quiz</span>Assessments
       </a>
-      <a routerLink="/schools/staff" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/schools/staff" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">account_tree</span>School admin
       </a>
-      <a routerLink="/moderation" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+      <a routerLink="/moderation" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">shield</span>Moderation
       </a>
     </nav>
@@ -42,23 +45,23 @@
           </button>
           <a routerLink="/" class="text-lg font-semibold text-slate-900 hidden lg:inline-flex">Berjis Schools</a>
         </div>
-        <form class="flex items-center gap-2 flex-1 max-w-2xl bg-slate-100 border border-slate-200 rounded-full px-4 py-2" (submit)="onSearchSubmit()">
+        <form class="flex items-center gap-2 flex-1 max-w-2xl bg-slate-100 border border-slate-200 rounded-full px-4 py-2" (submit)="onSearchSubmit($event)">
           <span class="material-symbols-outlined text-slate-500 text-base">search</span>
-          <input class="flex-1 bg-transparent text-sm focus:outline-none" type="text" placeholder="Search courses, lessons, tutors" [ngModel]="search()" (ngModelChange)="search.set()" name="q" />
+          <input class="flex-1 bg-transparent text-sm focus:outline-none" type="text" placeholder="Search courses, lessons, tutors" [ngModel]="search()" (ngModelChange)="search.set($event)" name="q" />
         </form>
         <div class="flex items-center gap-3">
-          <a routerLink="/course/create" class="hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-full bg-rose-600 text-white text-sm shadow-sm">
+          <a routerLink="/course/create" class="hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-full bg-blue-700 text-white text-sm shadow-sm">
             <span class="material-symbols-outlined text-base">add</span>New course
           </a>
           <div class="relative">
             <button class="flex items-center gap-2 px-3 py-2 rounded-full border border-slate-200 text-sm" (click)="toggleAccount()">
-              <span class="material-symbols-outlined text-base text-rose-600">account_circle</span>
+              <span class="material-symbols-outlined text-base text-blue-700">account_circle</span>
               <span>Account</span>
               <span class="material-symbols-outlined text-xs">expand_more</span>
             </button>
             <div *ngIf="showAccount()" class="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-2 text-sm">
-              <a routerLink="/classes" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-50">
-                <span class="material-symbols-outlined text-base text-rose-500">library_books</span>My courses
+              <a routerLink="/courses/mine" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-50">
+                <span class="material-symbols-outlined text-base text-indigo-500">dashboard_customize</span>My authored courses
               </a>
               <a routerLink="/schools/staff" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-50">
                 <span class="material-symbols-outlined text-base text-emerald-500">diversity_3</span>School console
@@ -83,10 +86,10 @@
     <header class="border-b border-slate-200 bg-white/90 backdrop-blur-lg">
       <div class="max-w-6xl mx-auto px-6 md:px-8 h-16 flex items-center justify-between">
         <a routerLink="/" class="flex items-center gap-2 text-slate-900 font-semibold text-lg">
-          <span class="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center">Bs</span>
+          <span class="w-9 h-9 rounded-xl bg-blue-700 text-white flex items-center justify-center">Bs</span>
           Berjis Schools
         </a>
-        <a [href]="loginHref" class="px-4 py-2 rounded-full bg-rose-600 text-white text-sm shadow-sm">Sign in</a>
+        <a [href]="loginHref" class="px-4 py-2 rounded-full bg-blue-700 text-white text-sm shadow-sm">Sign in</a>
       </div>
     </header>
     <router-outlet></router-outlet>

@@ -258,30 +258,159 @@ func New(opts Options) *fiber.App {
 
 	// --- Classes ---
 	type class struct {
-		ID          string    `json:"id" db:"id"`
-		SchoolID    *string   `json:"schoolId,omitempty" db:"school_id"`
-		TutorUserID string    `json:"tutorUserId" db:"tutor_user_id"`
-		Title       string    `json:"title" db:"title"`
-		Description *string   `json:"description,omitempty" db:"description"`
-		Visibility  string    `json:"visibility" db:"visibility"`
-		IsPaid      bool      `json:"isPaid" db:"is_paid"`
-		PriceCents  int       `json:"priceCents" db:"price_cents"`
-		CreatedAt   time.Time `json:"createdAt" db:"created_at"`
-		UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+		ID           string    `json:"id" db:"id"`
+		SchoolID     *string   `json:"schoolId,omitempty" db:"school_id"`
+		TutorUserID  string    `json:"tutorUserId" db:"tutor_user_id"`
+		Title        string    `json:"title" db:"title"`
+		Description  *string   `json:"description,omitempty" db:"description"`
+		Visibility   string    `json:"visibility" db:"visibility"`
+		IsPaid       bool      `json:"isPaid" db:"is_paid"`
+		PriceCents   int       `json:"priceCents" db:"price_cents"`
+		StudentCount int       `json:"studentCount" db:"student_count"`
+		SubjectCount int       `json:"subjectCount" db:"subject_count"`
+		LessonCount  int       `json:"lessonCount" db:"lesson_count"`
+		TestCount    int       `json:"testCount" db:"test_count"`
+		CreatedAt    time.Time `json:"createdAt" db:"created_at"`
+		UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
 	}
 	app.Get("/v1/classes", func(c *fiber.Ctx) error {
 		if opts.DB == nil {
 			return fiber.ErrInternalServerError
 		}
 		schoolID := c.Query("school_id")
+		mine := strings.EqualFold(c.Query("mine"), "1") || strings.EqualFold(c.Query("mine"), "true")
+		tutorFilter := c.Query("tutor_user_id")
 		uid, _ := getUserID(c) // optional; if present include owned/private
+		if mine && uid == "" {
+			return fiber.ErrUnauthorized
+		}
 		rows := []class{}
 		if schoolID != "" {
-			if err := opts.DB.Select(&rows, `SELECT id, school_id, tutor_user_id, title, description, visibility, is_paid, price_cents, created_at, updated_at FROM classes WHERE school_id=$1 OR tutor_user_id=$2 OR visibility='public' ORDER BY created_at DESC`, schoolID, uid); err != nil {
+			if err := opts.DB.Select(&rows, `SELECT c.id, c.school_id, c.tutor_user_id, c.title, c.description, c.visibility, c.is_paid, c.price_cents,
+                    COALESCE(stats.student_count,0) AS student_count, COALESCE(subj.subject_count,0) AS subject_count,
+                    COALESCE(less.lesson_count,0) AS lesson_count, COALESCE(tests.test_count,0) AS test_count,
+                    c.created_at, c.updated_at
+                    FROM classes c
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*) FILTER (WHERE status='active')::int AS student_count
+                        FROM class_enrollments
+                        GROUP BY class_id
+                    ) stats ON stats.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS subject_count FROM subjects GROUP BY class_id
+                    ) subj ON subj.class_id=c.id
+                    LEFT JOIN (
+                        SELECT sub.class_id, COUNT(*)::int AS lesson_count
+                        FROM lessons l JOIN subjects sub ON sub.id=l.subject_id
+                        GROUP BY sub.class_id
+                    ) less ON less.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS test_count FROM (
+                            SELECT COALESCE(sub.class_id, sub2.class_id) AS class_id
+                            FROM tests t
+                            LEFT JOIN subjects sub ON sub.id=t.subject_id
+                            LEFT JOIN lessons l ON l.id=t.lesson_id
+                            LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+                        ) q GROUP BY class_id
+                    ) tests ON tests.class_id=c.id
+                    WHERE c.school_id=$1 OR c.tutor_user_id=$2 OR c.visibility='public'
+                    ORDER BY c.created_at DESC`, schoolID, uid); err != nil {
+				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
+		} else if mine && uid != "" {
+			if err := opts.DB.Select(&rows, `SELECT c.id, c.school_id, c.tutor_user_id, c.title, c.description, c.visibility, c.is_paid, c.price_cents,
+                    COALESCE(stats.student_count,0) AS student_count, COALESCE(subj.subject_count,0) AS subject_count,
+                    COALESCE(less.lesson_count,0) AS lesson_count, COALESCE(tests.test_count,0) AS test_count,
+                    c.created_at, c.updated_at
+                    FROM classes c
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*) FILTER (WHERE status='active')::int AS student_count
+                        FROM class_enrollments
+                        GROUP BY class_id
+                    ) stats ON stats.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS subject_count FROM subjects GROUP BY class_id
+                    ) subj ON subj.class_id=c.id
+                    LEFT JOIN (
+                        SELECT sub.class_id, COUNT(*)::int AS lesson_count
+                        FROM lessons l JOIN subjects sub ON sub.id=l.subject_id
+                        GROUP BY sub.class_id
+                    ) less ON less.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS test_count FROM (
+                            SELECT COALESCE(sub.class_id, sub2.class_id) AS class_id
+                            FROM tests t
+                            LEFT JOIN subjects sub ON sub.id=t.subject_id
+                            LEFT JOIN lessons l ON l.id=t.lesson_id
+                            LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+                        ) q GROUP BY class_id
+                    ) tests ON tests.class_id=c.id
+                    WHERE c.tutor_user_id=$1
+                    ORDER BY c.created_at DESC`, uid); err != nil {
+				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
+		} else if tutorFilter != "" {
+			if err := opts.DB.Select(&rows, `SELECT c.id, c.school_id, c.tutor_user_id, c.title, c.description, c.visibility, c.is_paid, c.price_cents,
+                    COALESCE(stats.student_count,0) AS student_count, COALESCE(subj.subject_count,0) AS subject_count,
+                    COALESCE(less.lesson_count,0) AS lesson_count, COALESCE(tests.test_count,0) AS test_count,
+                    c.created_at, c.updated_at
+                    FROM classes c
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*) FILTER (WHERE status='active')::int AS student_count
+                        FROM class_enrollments
+                        GROUP BY class_id
+                    ) stats ON stats.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS subject_count FROM subjects GROUP BY class_id
+                    ) subj ON subj.class_id=c.id
+                    LEFT JOIN (
+                        SELECT sub.class_id, COUNT(*)::int AS lesson_count
+                        FROM lessons l JOIN subjects sub ON sub.id=l.subject_id
+                        GROUP BY sub.class_id
+                    ) less ON less.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS test_count FROM (
+                            SELECT COALESCE(sub.class_id, sub2.class_id) AS class_id
+                            FROM tests t
+                            LEFT JOIN subjects sub ON sub.id=t.subject_id
+                            LEFT JOIN lessons l ON l.id=t.lesson_id
+                            LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+                        ) q GROUP BY class_id
+                    ) tests ON tests.class_id=c.id
+                    WHERE c.tutor_user_id=$1
+                    ORDER BY c.created_at DESC`, tutorFilter); err != nil {
 				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 			}
 		} else {
-			if err := opts.DB.Select(&rows, `SELECT id, school_id, tutor_user_id, title, description, visibility, is_paid, price_cents, created_at, updated_at FROM classes WHERE visibility='public' OR tutor_user_id=$1 ORDER BY created_at DESC`, uid); err != nil {
+			if err := opts.DB.Select(&rows, `SELECT c.id, c.school_id, c.tutor_user_id, c.title, c.description, c.visibility, c.is_paid, c.price_cents,
+                    COALESCE(stats.student_count,0) AS student_count, COALESCE(subj.subject_count,0) AS subject_count,
+                    COALESCE(less.lesson_count,0) AS lesson_count, COALESCE(tests.test_count,0) AS test_count,
+                    c.created_at, c.updated_at
+                    FROM classes c
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*) FILTER (WHERE status='active')::int AS student_count
+                        FROM class_enrollments
+                        GROUP BY class_id
+                    ) stats ON stats.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS subject_count FROM subjects GROUP BY class_id
+                    ) subj ON subj.class_id=c.id
+                    LEFT JOIN (
+                        SELECT sub.class_id, COUNT(*)::int AS lesson_count
+                        FROM lessons l JOIN subjects sub ON sub.id=l.subject_id
+                        GROUP BY sub.class_id
+                    ) less ON less.class_id=c.id
+                    LEFT JOIN (
+                        SELECT class_id, COUNT(*)::int AS test_count FROM (
+                            SELECT COALESCE(sub.class_id, sub2.class_id) AS class_id
+                            FROM tests t
+                            LEFT JOIN subjects sub ON sub.id=t.subject_id
+                            LEFT JOIN lessons l ON l.id=t.lesson_id
+                            LEFT JOIN subjects sub2 ON sub2.id=l.subject_id
+                        ) q GROUP BY class_id
+                    ) tests ON tests.class_id=c.id
+                    WHERE c.visibility='public' OR c.tutor_user_id=$1
+                    ORDER BY c.created_at DESC`, uid); err != nil {
 				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 			}
 		}
@@ -346,6 +475,88 @@ func New(opts Options) *fiber.App {
 		}
 		id := c.Params("id")
 		if _, err := opts.DB.Exec(`INSERT INTO class_enrollments (class_id, student_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, id, uid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	app.Patch("/v1/classes/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		classID := c.Params("id")
+		var existing struct {
+			TutorUserID string  `db:"tutor_user_id"`
+			SchoolID    *string `db:"school_id"`
+		}
+		if err := opts.DB.Get(&existing, `SELECT tutor_user_id, school_id FROM classes WHERE id=$1`, classID); err != nil {
+			return fiber.ErrNotFound
+		}
+		if existing.TutorUserID != uid {
+			allowed := false
+			if existing.SchoolID != nil && *existing.SchoolID != "" {
+				allowed, _ = auth.IsSchoolAdmin(opts.DB, *existing.SchoolID, uid)
+			}
+			if !allowed {
+				return fiber.ErrForbidden
+			}
+		}
+		var body struct {
+			Title       *string `json:"title"`
+			Description *string `json:"description"`
+			Visibility  *string `json:"visibility"`
+			IsPaid      *bool   `json:"isPaid"`
+			PriceCents  *int    `json:"priceCents"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		setClauses := []string{}
+		args := []any{}
+		if body.Title != nil {
+			setClauses = append(setClauses, "title=$"+strconv.Itoa(len(args)+1))
+			args = append(args, strings.TrimSpace(*body.Title))
+		}
+		if body.Description != nil {
+			setClauses = append(setClauses, "description=$"+strconv.Itoa(len(args)+1))
+			desc := strings.TrimSpace(*body.Description)
+			if desc == "" {
+				args = append(args, nil)
+			} else {
+				args = append(args, desc)
+			}
+		}
+		if body.Visibility != nil {
+			vis := strings.ToLower(strings.TrimSpace(*body.Visibility))
+			if vis != "public" && vis != "private" && vis != "school" {
+				return fiber.ErrBadRequest
+			}
+			setClauses = append(setClauses, "visibility=$"+strconv.Itoa(len(args)+1))
+			args = append(args, vis)
+		}
+		if body.IsPaid != nil {
+			setClauses = append(setClauses, "is_paid=$"+strconv.Itoa(len(args)+1))
+			args = append(args, *body.IsPaid)
+		}
+		if body.PriceCents != nil {
+			price := *body.PriceCents
+			if price < 0 {
+				price = 0
+			}
+			setClauses = append(setClauses, "price_cents=$"+strconv.Itoa(len(args)+1))
+			args = append(args, price)
+		}
+		if len(setClauses) == 0 {
+			return c.JSON(fiber.Map{"success": true})
+		}
+		setClauses = append(setClauses, "updated_at=now()")
+		args = append(args, classID)
+		query := "UPDATE classes SET " + strings.Join(setClauses, ", ") + " WHERE id=$" + strconv.Itoa(len(args))
+		if _, err := opts.DB.Exec(query, args...); err != nil {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return c.JSON(fiber.Map{"success": true})

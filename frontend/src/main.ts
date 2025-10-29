@@ -19,6 +19,7 @@ import { CreateCoursePage } from './app/pages/create-course.page';
 import { AppComponent } from './app/app.component';
 import { SearchPage } from './app/pages/search.page';
 import { authGuard } from './app/guards/auth.guard';
+import { MyCoursesPage } from './app/pages/my-courses.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -36,6 +37,7 @@ const routes: Routes = [
   { path: 'moderation/tutors', loadComponent: () => Promise.resolve(TutorReviewPage), canActivate: [authGuard] },
   { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage), canActivate: [authGuard] },
   { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage), canActivate: [authGuard] },
+  { path: 'courses/mine', loadComponent: () => Promise.resolve(MyCoursesPage), canActivate: [authGuard] },
   { path: 'course/:id', component: CourseOverviewComponent },
   { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent, canActivate: [authGuard] },
   { path: 'course/:id/tests/:testId', component: TestViewComponent, canActivate: [authGuard] },
