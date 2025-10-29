@@ -15,6 +15,18 @@
     <div *ngIf="contentKind() === 'video'">
       <video controls [src]="l.content?.url" class="w-full max-h-[60vh]"></video>
     </div>
+    <div *ngIf="contentKind() === 'simulation'" class="p-4 border rounded space-y-3 bg-gray-50">
+      <div class="font-semibold text-gray-800">Simulation Playground</div>
+      <div class="text-sm text-gray-700 whitespace-pre-line" *ngIf="l.content?.instructions">{{ l.content.instructions }}</div>
+      <div class="rounded-lg overflow-hidden border border-gray-200 bg-white" *ngIf="simulationUrl(l) as simUrl">
+        <iframe [src]="simUrl" class="w-full h-80" allow="fullscreen; clipboard-read; clipboard-write"></iframe>
+      </div>
+      <a *ngIf="l.content?.sandboxUrl" [href]="l.content?.sandboxUrl" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 text-sm text-rose-600">
+        <span class="material-symbols-outlined text-base">open_in_new</span>
+        Open simulation in new tab
+      </a>
+    </div>
     <div *ngIf="contentKind() === 'live'" class="p-4 border rounded">
       <div class="font-semibold mb-2">Live Session</div>
       <div class="text-sm text-gray-700">Mode: {{ l.content?.mode }}</div>
@@ -35,9 +47,9 @@
         <div *ngFor="let q of qas()" class="py-3">
           <div class="flex items-start gap-3">
             <div class="flex flex-col items-center w-10">
-              <button class="material-icons" (click)="upvoteQuestion(q)">expand_less</button>
+              <button class="material-symbols-outlined" (click)="upvoteQuestion(q)">expand_less</button>
               <div class="text-sm font-semibold">{{ q.points }}</div>
-              <button class="material-icons" (click)="downvoteQuestion(q)">expand_more</button>
+              <button class="material-symbols-outlined" (click)="downvoteQuestion(q)">expand_more</button>
             </div>
             <div class="flex-1">
               <div class="font-medium">{{ q.title }}</div>
@@ -63,4 +75,3 @@
     </div>
   </div>
 </ng-container>
-

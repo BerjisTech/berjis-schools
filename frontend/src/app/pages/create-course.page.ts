@@ -16,6 +16,7 @@ export class CreateCoursePage {
   description = '';
   isPaid = false;
   priceCents: number = 0;
+  visibility: 'public'|'private'|'school' = 'public';
   createdCourseId: string | null = null;
   creating = false;
 
@@ -28,7 +29,13 @@ export class CreateCoursePage {
     if (!this.title.trim()) return;
     this.creating = true;
     try {
-      const c = await this.svc.createCourse({ title: this.title.trim(), description: this.description.trim(), isPaid: this.isPaid, priceCents: this.priceCents });
+      const c = await this.svc.createCourse({
+        title: this.title.trim(),
+        description: this.description.trim(),
+        isPaid: this.isPaid,
+        priceCents: this.priceCents,
+        visibility: this.visibility,
+      });
       this.createdCourseId = `${c.id}`;
     } finally { this.creating = false }
   }
@@ -40,4 +47,3 @@ export class CreateCoursePage {
     this.newSubjectTitle = '';
   }
 }
-

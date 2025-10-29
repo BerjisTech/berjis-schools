@@ -2,7 +2,7 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterModule } from '@angular/router';
-import { loginUrl, urlFor } from './util';
+import { loginUrl, verifySession } from './util';
 
 @Component({
   selector: 'app-root',
@@ -21,10 +21,11 @@ export class AppComponent implements OnInit {
 
   async ngOnInit() {
     try {
-      const verify = await fetch(`${urlFor('api')}/v1/auth/verify`, { credentials: 'include' });
-      const v = await verify.json();
-      this.authed.set(!!(v?.data?.valid));
-    } catch { this.authed.set(false) }
+      const result = await verifySession({ attemptRefresh: true });
+      this.authed.set(!!result.valid);
+    } catch {
+      this.authed.set(false);
+    }
   }
 
   toggleAccount() { this.showAccount.update(x => !x) }

@@ -31,7 +31,13 @@ export interface LessonContentLive {
   endsAt?: string;   // ISO timestamp
 }
 
-export type LessonContent = LessonContentText | LessonContentAudio | LessonContentVideo | LessonContentLive;
+export interface LessonContentSimulation {
+  type: 'simulation';
+  sandboxUrl?: string;
+  instructions?: string;
+}
+
+export type LessonContent = LessonContentText | LessonContentAudio | LessonContentVideo | LessonContentLive | LessonContentSimulation;
 
 export interface Lesson {
   id: string;
@@ -39,7 +45,7 @@ export interface Lesson {
   title?: string;
   description?: string;
   subjectId?: string;
-  type?: 'text' | 'audio' | 'video' | 'live';
+  type?: 'text' | 'audio' | 'video' | 'live' | 'simulation';
   content?: LessonContent | any;
   orderIndex?: number;
   isFree?: boolean;
@@ -67,6 +73,8 @@ export interface Course {
   rating?: number;
   isPaid?: boolean;
   priceCents?: number;
+  visibility?: 'school' | 'private' | 'public';
+  tutorUserId?: string;
   subjects?: Subject[];
 }
 

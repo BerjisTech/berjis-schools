@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { urlFor } from '../../app/util';
+import { SchoolsService } from '../services/schools.service';
+import { SchoolInvite, SchoolOverview, SchoolSummary } from '../interfaces/school';
+import { UserRef } from '../interfaces/course';
 
 @Component({
   selector: 'app-school-staff-page',
@@ -10,53 +12,154 @@ import { urlFor } from '../../app/util';
   templateUrl: './school-staff.page.html'
 })
 export class SchoolStaffPage implements OnInit {
-  schoolId = '';
-  members: { userId: string; role: string; status: string }[] = [];
-  userId = '';
-  role: 'tutor'|'admin' = 'tutor';
-  saving = false;
-  message = '';
-  success = false;
-  myAdminSchools: { id: string; name: string }[] = [];
+  schools = signal<SchoolSummary[]>([]);
+  schoolId = signal('');
+  overview = signal<SchoolOverview | null>(null);
+  invites = signal<SchoolInvite[]>([]);
+  members = signal<{ userId: string; role: string; status: string }[]>([]);
 
-  async ngOnInit() { await this.refreshSchools() }
+  loadingOverview = signal(false);
+  loadingInvites = signal(false);
+  loadingMembers = signal(false);
+  searchingUsers = signal(false);
 
-  async refreshSchools() {
+  searchQuery = signal('');
+  searchResults = signal<UserRef[]>([]);
+  addRole = signal<'tutor'|'admin'>('tutor');
+
+  inviteEmail = signal('');
+  inviteRole = signal<'tutor'|'admin'>('tutor');
+  inviteMessage = signal('');
+  inviteSubmitting = signal(false);
+
+  toast = signal<{ kind: 'success'|'error'; text: string }|null>(null);
+
+  readonly selectedSchool = computed(() => this.schools().find(s => s.id === this.schoolId()) ?? null);
+
+  constructor(private svc: SchoolsService) {}
+
+  async ngOnInit() {
+    await this.loadAdminSchools();
+  }
+
+  async loadAdminSchools() {
     try {
-      const res = await fetch(`${urlFor('schools-api')}/v1/schools/mine?role=admin`, { credentials: 'include' });
-      const j = await res.json();
-      this.myAdminSchools = (j?.data ?? []) as any[];
-      if (!this.schoolId && this.myAdminSchools.length) {
-        this.schoolId = this.myAdminSchools[0].id;
-        await this.loadMembers();
+      const list = await this.svc.listAdminSchools();
+      this.schools.set(list);
+      if (!this.schoolId() && list.length) {
+        this.schoolId.set(list[0].id);
       }
-    } catch { this.myAdminSchools = [] }
+      if (this.schoolId()) {
+        await Promise.all([this.loadOverview(), this.loadMembers(), this.loadInvites()]);
+      }
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Failed to load schools' });
+    }
+  }
+
+  async selectSchool(id: string) {
+    if (this.schoolId() === id) return;
+    this.schoolId.set(id);
+    this.overview.set(null);
+    this.searchResults.set([]);
+    await Promise.all([this.loadOverview(), this.loadMembers(), this.loadInvites()]);
+  }
+
+  async loadOverview() {
+    if (!this.schoolId()) return;
+    this.loadingOverview.set(true);
+    try {
+      const data = await this.svc.getSchoolOverview(this.schoolId());
+      this.overview.set(data);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Failed to load overview' });
+    } finally {
+      this.loadingOverview.set(false);
+    }
   }
 
   async loadMembers() {
-    this.message = '';
+    if (!this.schoolId()) return;
+    this.loadingMembers.set(true);
     try {
-      const res = await fetch(`${urlFor('schools-api')}/v1/schools/${this.schoolId}/members`, { credentials: 'include' });
-      const j = await res.json();
-      this.members = j?.data ?? [];
-    } catch { this.members = [] }
+      const data = await this.svc.getSchoolMembers(this.schoolId());
+      this.members.set(data);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Failed to load members' });
+      this.members.set([]);
+    } finally {
+      this.loadingMembers.set(false);
+    }
   }
 
-  async addMember() {
-    this.saving = true; this.message = ''; this.success = false;
+  async loadInvites() {
+    if (!this.schoolId()) return;
+    this.loadingInvites.set(true);
     try {
-      const res = await fetch(`${urlFor('schools-api')}/v1/schools/${this.schoolId}/members`, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: this.userId, role: this.role })
-      });
-      const j = await res.json();
-      if (!j?.success) throw new Error(j?.message || 'Failed');
-      this.success = true; this.message = 'Member added';
-      this.userId = '';
+      const rows = await this.svc.getSchoolInvites(this.schoolId());
+      this.invites.set(rows);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Failed to load invites' });
+      this.invites.set([]);
+    } finally {
+      this.loadingInvites.set(false);
+    }
+  }
+
+  async searchUsers() {
+    const q = this.searchQuery().trim();
+    if (!q) { this.searchResults.set([]); return; }
+    this.searchingUsers.set(true);
+    try {
+      const res = await this.svc.searchUsersGlobal(q);
+      this.searchResults.set(res);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Search failed' });
+      this.searchResults.set([]);
+    } finally {
+      this.searchingUsers.set(false);
+    }
+  }
+
+  async addMember(user: UserRef) {
+    if (!user?.id || !this.schoolId()) return;
+    try {
+      const ok = await this.svc.addSchoolMember(this.schoolId(), user.id, this.addRole());
+      if (!ok) throw new Error('Unable to add member');
+      this.toast.set({ kind: 'success', text: `Added ${user.name || user.id} as ${this.addRole()}` });
+      this.searchResults.set([]);
+      this.searchQuery.set('');
       await this.loadMembers();
-    } catch (e: any) { this.message = e?.message || 'Failed to add member' }
-    finally { this.saving = false }
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Failed to add member' });
+    }
   }
+
+  async submitInvite() {
+    if (!this.schoolId()) return;
+    const email = this.inviteEmail().trim();
+    if (!email) {
+      this.toast.set({ kind: 'error', text: 'Enter an email to invite' });
+      return;
+    }
+    this.inviteSubmitting.set(true);
+    try {
+      const created = await this.svc.createSchoolInvite(this.schoolId(), {
+        email,
+        role: this.inviteRole(),
+        message: this.inviteMessage().trim() || undefined,
+      });
+      if (!created) throw new Error('Invite could not be created');
+      this.toast.set({ kind: 'success', text: 'Invite sent' });
+      this.inviteEmail.set('');
+      this.inviteMessage.set('');
+      await this.loadInvites();
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Failed to send invite' });
+    } finally {
+      this.inviteSubmitting.set(false);
+    }
+  }
+
+  dismissToast() { this.toast.set(null); }
 }
-
-

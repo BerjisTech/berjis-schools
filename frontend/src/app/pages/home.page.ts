@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { detectRootDomain, urlFor, loginUrl } from '../../app/util';
+import { detectRootDomain, urlFor, loginUrl, verifySession } from '../../app/util';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -25,14 +25,52 @@ export class HomePage implements OnInit {
   recentTests: { id: string; title: string }[] = [];
   tutorStatus: string | null = null;
 
+  platformHighlights = [
+    {
+      icon: 'hub',
+      title: 'Unified learning journeys',
+      body: 'Blend recorded lessons, instructor-led sessions, peer rooms, and simulations in one cohesive experience.'
+    },
+    {
+      icon: 'assignment_turned_in',
+      title: 'Assessments that adapt',
+      body: 'Mix objective and subjective testing, schedule class promotions, and surface insights for tutors and admins.'
+    },
+    {
+      icon: 'payments',
+      title: 'Monetise your expertise',
+      body: 'Sell private courses, run cohorts, or embed your school brand with streamlined payouts and pricing controls.'
+    }
+  ];
+
+  personaStories = [
+    {
+      title: 'Learners & Families',
+      description: 'Discover curated classes, measure mastery, and invite guardians to monitor progress with real-time reports.'
+    },
+    {
+      title: 'Tutors & Instructors',
+      description: 'Publish modular courses, launch live workshops, build simulations, and earn from private or school-backed programs.'
+    },
+    {
+      title: 'Schools & Organisations',
+      description: 'Spin up digital campuses, orchestrate staff, manage classes, and move cohorts through structured promotions.'
+    }
+  ];
+
+  quickActions = [
+    { label: 'Create course', href: '/course/create', icon: 'auto_stories', accent: 'bg-rose-50 text-rose-700' },
+    { label: 'Manage school staff', href: '/schools/staff', icon: 'group', accent: 'bg-emerald-50 text-emerald-700' },
+    { label: 'Explore classes', href: '/classes', icon: 'explore', accent: 'bg-orange-50 text-orange-700' }
+  ];
+
   async ngOnInit() {
     const root = detectRootDomain(window.location.hostname);
     this.domainHint = `Domain: ${root}`;
 
     try {
-      const verify = await fetch(`${urlFor('api')}/v1/auth/verify`, { credentials: 'include' });
-      const v = await verify.json();
-      this.authed = !!(v?.data?.valid);
+      const result = await verifySession({ attemptRefresh: true });
+      this.authed = !!result.valid;
     } catch {}
 
     await this.loadFeatured();

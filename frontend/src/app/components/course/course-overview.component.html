@@ -1,62 +1,269 @@
 <div *ngIf="loading()" class="p-6">Loading course…</div>
 <ng-container *ngIf="!loading() && course() as c">
-  <div class="p-6 space-y-4">
-    <div class="flex items-start justify-between gap-4">
-      <div class="space-y-2">
-        <h1 class="text-2xl font-bold">{{ c.title || c.name }}</h1>
-        <div class="text-gray-700 max-w-3xl">{{ c.description }}</div>
-        <div class="flex items-center gap-4 text-sm text-gray-600">
-          <div class="flex items-center gap-1"><span class="material-icons text-base">schedule</span>{{ totalMinutes() || 0 }} mins total</div>
-          <div class="flex items-center gap-1"><span class="material-icons text-base">star</span>{{ c.rating ?? 0 }}</div>
-          <div class="flex items-center gap-1" *ngIf="c.isPaid"><span class="material-icons text-base">payments</span>{{ (c.priceCents ?? 0) / 100 | number:'1.2-2' }}</div>
-        </div>
-      </div>
-      <div class="shrink-0 flex flex-col items-end gap-2">
-        <button class="px-4 py-2 rounded-md bg-blue-600 text-white" (click)="enroll()" [disabled]="enrolling()">{{ enrolling() ? 'Enrolling…' : 'Enroll' }}</button>
-        <a [routerLink]="['/lessons']" class="text-sm underline">Go to my lessons</a>
-      </div>
-    </div>
-
-    <div class="p-4 border rounded-md">
-      <div class="font-semibold mb-2">Test placement</div>
-      <div class="flex flex-wrap gap-2 text-sm">
-        <button class="px-3 py-1 rounded border" (click)="updatePlacement({kind:'manual'})">Manual</button>
-        <button class="px-3 py-1 rounded border" (click)="updatePlacement({kind:'after_each_lesson'})">After each lesson</button>
-        <button class="px-3 py-1 rounded border" (click)="updatePlacement({kind:'after_every_n_lessons', n: 5})">After every 5 lessons</button>
-        <button class="px-3 py-1 rounded border" (click)="updatePlacement({kind:'random', count: 3})">Random</button>
-      </div>
-    </div>
-
-    <div class="space-y-6">
-      <div *ngFor="let s of subjects()" class="space-y-2">
-        <h2 class="text-xl font-semibold">{{ s.title }}</h2>
-        <div class="p-3 border rounded bg-gray-50 space-y-2">
-          <div class="text-sm font-medium">Add content</div>
-          <div class="flex flex-wrap gap-2 text-sm">
-            <a [routerLink]="['/course', c.id]" class="px-3 py-1 rounded border" (click)="$event.preventDefault()" title="Coming soon via modal">New lesson</a>
-            <a [routerLink]="['/course', c.id]" class="px-3 py-1 rounded border" (click)="$event.preventDefault()" title="Attach a test to this subject or lessons">New test</a>
+  <div class="p-6 space-y-6">
+    <div class="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="space-y-2">
+          <h1 class="text-3xl font-semibold">{{ c.title || c.name }}</h1>
+          <p class="text-sm text-gray-600 max-w-3xl whitespace-pre-line">{{ c.description }}</p>
+          <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500">
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-base">schedule</span>{{ totalMinutes() || 0 }} mins total</span>
+            <span class="flex items-center gap-1" *ngIf="c.visibility"><span class="material-symbols-outlined text-base">visibility</span>{{ c.visibility | titlecase }}</span>
+            <span class="flex items-center gap-1" *ngIf="c.isPaid"><span class="material-symbols-outlined text-base">payments</span>{{ (c.priceCents ?? 0) / 100 | currency }}</span>
           </div>
         </div>
-        <div class="space-y-2">
-          <ng-container *ngFor="let it of displayedItemsForSubject(s.id)">
-            <div *ngIf="it.kind==='lesson' && it.lesson as l" class="p-3 border rounded flex items-center justify-between">
-              <div class="space-y-1">
-                <div class="font-medium">{{ l.title || l.name }}</div>
-                <div class="text-xs text-gray-600">{{ l.type }} • {{ l.estimatedMinutes || 0 }} mins</div>
-              </div>
-              <a [routerLink]="['/course', c.id, 'lessons', l.id]" class="text-sm px-3 py-1 rounded bg-gray-800 text-white">Open</a>
+        <div class="flex flex-col items-end gap-2">
+          <button class="px-4 py-2 rounded-md bg-blue-600 text-white" (click)="enroll()" [disabled]="enrolling()">
+            {{ enrolling() ? 'Enrolling…' : 'Enroll' }}
+          </button>
+          <div class="text-xs text-gray-500">Lead tutor: {{ c.tutorUserId || 'Unknown' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="toast() as t" class="flex items-center justify-between rounded-lg border px-4 py-3"
+      [class.bg-green-50]="t.kind === 'success'" [class.border-green-200]="t.kind === 'success'" [class.text-green-800]="t.kind === 'success'"
+      [class.bg-red-50]="t.kind === 'error'" [class.border-red-200]="t.kind === 'error'" [class.text-red-700]="t.kind === 'error'">
+      <span class="text-sm">{{ t.text }}</span>
+      <button class="text-xs uppercase tracking-wide" (click)="dismissToast()">Dismiss</button>
+    </div>
+
+    <section class="border border-gray-200 rounded-2xl bg-white shadow-sm p-5">
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span class="font-semibold">Test placement</span>
+        <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'manual'})">Manual</button>
+        <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'after_each_lesson'})">After each lesson</button>
+        <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'after_every_n_lessons', n: 5})">After every 5 lessons</button>
+        <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'random', count: 3})">Random</button>
+      </div>
+    </section>
+
+    <section *ngIf="isOwner()" class="border border-emerald-200 rounded-2xl bg-emerald-50/60 p-5 space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold">Manage your course</h2>
+        <p class="text-xs text-emerald-700">Add subjects, create lessons (including simulations), and schedule assessments for your students.</p>
+      </div>
+      <form class="flex flex-col md:flex-row gap-3" (ngSubmit)="createSubject()">
+        <input class="flex-1 border border-emerald-200 rounded-md px-3 py-2 text-sm" placeholder="New subject title"
+          [ngModel]="subjectTitle()" (ngModelChange)="subjectTitle.set($event)" name="subjectTitle" />
+        <button type="submit" class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700" [disabled]="creatingSubject() || !subjectTitle().trim()">
+          {{ creatingSubject() ? 'Adding…' : 'Add Subject' }}
+        </button>
+      </form>
+    </section>
+
+    <div class="space-y-6">
+      <div *ngFor="let s of subjects()" class="border border-gray-200 rounded-2xl bg-white shadow-sm">
+        <div class="border-b border-gray-200 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-xl font-semibold">{{ s.title }}</h3>
+            <p class="text-xs text-gray-500" *ngIf="s.description">{{ s.description }}</p>
+          </div>
+          <div class="flex flex-wrap gap-2" *ngIf="isOwner()">
+            <button class="px-3 py-1 rounded-md border border-gray-300 text-sm hover:bg-gray-50" (click)="openLessonForm(s.id)">Add lesson</button>
+            <button class="px-3 py-1 rounded-md border border-gray-300 text-sm hover:bg-gray-50" (click)="openTestForm(s.id)">Add assessment</button>
+          </div>
+        </div>
+
+        <div class="px-5 py-4 space-y-5">
+          <div *ngIf="isOwner() && activeLessonSubjectId() === s.id" class="border border-gray-200 rounded-lg bg-gray-50 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-gray-700">New lesson</span>
+              <button class="text-xs uppercase tracking-wide text-gray-500" (click)="cancelLessonForm()">Cancel</button>
             </div>
-            <div *ngIf="it.kind==='test' && it.test as t" class="p-3 border-l-4 border-l-amber-500 bg-amber-50 rounded">
-              <div class="flex items-center justify-between">
-                <div class="font-medium flex items-center gap-2"><span class="material-icons text-amber-600">quiz</span>{{ t.title }}</div>
-                <a [routerLink]="['/tests']" class="text-sm underline">Take test</a>
+            <div class="grid md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  [(ngModel)]="lessonFormState.title"
+                  name="lessonTitle-{{s.id}}" />
               </div>
-              <div class="text-xs text-gray-700" *ngIf="t.description">{{ t.description }}</div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Lesson type</label>
+                <select class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  [(ngModel)]="lessonFormState.type"
+                  name="lessonType-{{s.id}}">
+                  <option value="text">Rich text / article</option>
+                  <option value="audio">Audio session</option>
+                  <option value="video">Video lesson</option>
+                  <option value="live">Live session</option>
+                  <option value="simulation">Simulation playground</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="checkbox"
+                  [(ngModel)]="lessonFormState.isFree"
+                  name="lessonFree-{{s.id}}" />
+                <span class="text-xs text-gray-600">Mark as free preview</span>
+              </div>
             </div>
-          </ng-container>
+
+            <div class="space-y-3" [ngSwitch]="lessonFormState.type">
+              <div *ngSwitchCase="'text'">
+                <label class="block text-xs font-medium text-gray-600 mb-1">Lesson body (HTML or Markdown)</label>
+                <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="4"
+                  [(ngModel)]="lessonFormState.textHtml"
+                  name="lessonText-{{s.id}}" placeholder="<p>Welcome...</p>"></textarea>
+              </div>
+              <div *ngSwitchCase="'audio'" class="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Audio URL</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    [(ngModel)]="lessonFormState.audioUrl"
+                    name="lessonAudioUrl-{{s.id}}" placeholder="https://..." />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Duration (seconds)</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="number"
+                    [(ngModel)]="lessonFormState.audioDuration"
+                    name="lessonAudioDuration-{{s.id}}" />
+                </div>
+              </div>
+              <div *ngSwitchCase="'video'" class="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Video URL</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    [(ngModel)]="lessonFormState.videoUrl"
+                    name="lessonVideoUrl-{{s.id}}" placeholder="https://..." />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Duration (seconds)</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="number"
+                    [(ngModel)]="lessonFormState.videoDuration"
+                    name="lessonVideoDuration-{{s.id}}" />
+                </div>
+              </div>
+              <div *ngSwitchCase="'live'" class="grid md:grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Mode</label>
+                  <select class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    [(ngModel)]="lessonFormState.liveMode"
+                    name="lessonLiveMode-{{s.id}}">
+                    <option value="one_on_one">One-on-one</option>
+                    <option value="group">Interactive group</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Starts at</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="datetime-local"
+                    [(ngModel)]="lessonFormState.liveStartsAt"
+                    name="lessonLiveStart-{{s.id}}" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Ends at</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="datetime-local"
+                    [(ngModel)]="lessonFormState.liveEndsAt"
+                    name="lessonLiveEnd-{{s.id}}" />
+                </div>
+              </div>
+              <div *ngSwitchCase="'simulation'" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Sandbox URL</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    [(ngModel)]="lessonFormState.simulationUrl"
+                    name="lessonSimUrl-{{s.id}}" placeholder="https://codesandbox.io/..."/>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Instructions</label>
+                  <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="3"
+                    [(ngModel)]="lessonFormState.simulationInstructions"
+                    name="lessonSimInstructions-{{s.id}}" placeholder="Explain how learners should use the playground."></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
+                (click)="createLesson()" [disabled]="creatingLesson() || !lessonFormState.title.trim()">
+                {{ creatingLesson() ? 'Creating…' : 'Create lesson' }}
+              </button>
+            </div>
+          </div>
+
+          <div *ngIf="isOwner() && activeTestSubjectId() === s.id" class="border border-amber-200 rounded-lg bg-amber-50 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-amber-800">New assessment</span>
+              <button class="text-xs uppercase tracking-wide text-amber-600" (click)="cancelTestForm()">Cancel</button>
+            </div>
+            <div class="grid md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-amber-700 mb-1">Title</label>
+                <input class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm"
+                  [(ngModel)]="testFormState.title"
+                  name="testTitle-{{s.id}}" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-amber-700 mb-1">Visibility</label>
+                <select class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm"
+                  [(ngModel)]="testFormState.visibility"
+                  name="testVisibility-{{s.id}}">
+                  <option value="private">Private to enrolled learners</option>
+                  <option value="public">Public practice</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-amber-700 mb-1">Description</label>
+              <textarea class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm" rows="3"
+                [(ngModel)]="testFormState.description"
+                name="testDescription-{{s.id}}" placeholder="How should learners prepare?"></textarea>
+            </div>
+            <div class="flex flex-wrap gap-3 text-xs">
+              <label class="flex items-center gap-2">
+                <input type="radio" value="subject" name="assessmentScope-{{s.id}}"
+                  [checked]="testFormState.scope === 'subject'"
+                  (change)="setAssessmentScope('subject')" />
+                Attach to subject (final / mid module)
+              </label>
+              <label class="flex items-center gap-2">
+                <input type="radio" value="lesson" name="assessmentScope-{{s.id}}"
+                  [checked]="testFormState.scope === 'lesson'"
+                  (change)="setAssessmentScope('lesson')" />
+                Attach to specific lesson
+              </label>
+            </div>
+            <div *ngIf="testFormState.scope === 'lesson'">
+              <label class="block text-xs font-medium text-amber-700 mb-1">Choose lesson</label>
+              <select class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm"
+                [(ngModel)]="testFormState.lessonId"
+                name="testLesson-{{s.id}}">
+                <option [ngValue]="null">Select lesson…</option>
+                <option *ngFor="let lesson of lessonsBySubject()[s.id] || []" [ngValue]="lesson.id">{{ lesson.title || lesson.name }}</option>
+              </select>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" class="px-4 py-2 rounded-md bg-amber-600 text-white text-sm hover:bg-amber-700"
+                (click)="createTest()" [disabled]="creatingTest() || !testFormState.title.trim()">
+                {{ creatingTest() ? 'Creating…' : 'Create assessment' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <ng-container *ngFor="let it of displayedItemsForSubject(s.id)">
+              <div *ngIf="it.kind === 'lesson' && it.lesson as l" class="border border-gray-200 rounded-lg p-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="font-semibold">{{ l.title || l.name }}</div>
+                  <div class="text-xs text-gray-500 flex flex-wrap gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 uppercase tracking-wide">{{ l.type }}</span>
+                    <span *ngIf="l.estimatedMinutes">{{ l.estimatedMinutes }} mins</span>
+                    <span *ngIf="l.isFree">Free preview</span>
+                  </div>
+                </div>
+                <a [routerLink]="['/course', c.id, 'lessons', l.id]" class="text-xs uppercase tracking-wide px-3 py-1 rounded-md bg-gray-900 text-white">Open</a>
+              </div>
+              <div *ngIf="it.kind === 'test' && it.test as t" class="border-l-4 border-l-amber-500 bg-amber-50 rounded-md p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="font-semibold flex items-center gap-2"><span class="material-symbols-outlined text-amber-600 text-base">quiz</span>{{ t.title }}</div>
+                    <div class="text-xs text-amber-800" *ngIf="t.description">{{ t.description }}</div>
+                  </div>
+                  <a [routerLink]="['/tests']" class="text-xs uppercase tracking-wide text-amber-700">Take test</a>
+                </div>
+              </div>
+            </ng-container>
+          </div>
         </div>
       </div>
     </div>
   </div>
-  
 </ng-container>

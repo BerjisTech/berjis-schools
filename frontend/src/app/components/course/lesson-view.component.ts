@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { SchoolsService } from '../../services/schools.service';
 import { Lesson } from '../../interfaces/course';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 
 interface QAAnswer { id: string; body: string; author?: string; points: number; createdAt: string }
 interface QAQuestion { id: string; title: string; body: string; author?: string; points: number; createdAt: string; answers: QAAnswer[] }
@@ -21,7 +22,7 @@ export class LessonViewComponent implements OnInit {
   newQuestionTitle = signal('');
   newQuestionBody = signal('');
 
-  constructor(private route: ActivatedRoute, private svc: SchoolsService) {}
+  constructor(private route: ActivatedRoute, private svc: SchoolsService, private sanitizer: DomSanitizer) {}
 
   async ngOnInit() {
     const courseId = this.route.snapshot.paramMap.get('id')!;
@@ -80,5 +81,11 @@ export class LessonViewComponent implements OnInit {
   voteAnswer(q: QAQuestion, a: QAAnswer, delta: number) {
     const l = this.lesson(); if (!l) return;
     a.points += delta; this.qas.update(arr => [...arr]); this.saveLocalQA(`${l.id}`);
+  }
+
+  simulationUrl(lesson: Lesson): SafeResourceUrl | null {
+    const url = (lesson?.content as any)?.sandboxUrl;
+    if (!url || typeof url !== 'string' || !url.trim()) return null;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   }
 }

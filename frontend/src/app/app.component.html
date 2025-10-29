@@ -1,49 +1,94 @@
-<div *ngIf="authed(); else guest">
-  <!-- Top bar -->
-  <div class="h-14 px-4 border-b flex items-center justify-between bg-white">
+<div *ngIf="authed(); else guest" class="flex min-h-screen bg-slate-50">
+  <aside *ngIf="showSidebar()" class="hidden lg:flex lg:flex-col w-64 border-r border-slate-200 bg-white/80 backdrop-blur-lg p-5 space-y-6 shadow-sm">
     <div class="flex items-center gap-3">
-      <button class="material-symbols-outlined" (click)="toggleSidebar()" title="Toggle sidebar">menu</button>
-      <a routerLink="/" class="font-bold">Schools</a>
-    </div>
-    <form class="flex items-center gap-2 max-w-xl w-full px-3" (submit)="onSearchSubmit($event)">
-      <span class="material-symbols-outlined text-gray-500">search</span>
-      <input class="flex-1 outline-none" type="text" placeholder="Search courses, lessons, tests" [ngModel]="search()" (ngModelChange)="search.set($event)" name="q" />
-    </form>
-    <div class="relative">
-      <button class="flex items-center gap-2" (click)="toggleAccount()">
-        <span class="material-symbols-outlined">account_circle</span>
-        <span class="text-sm">Account</span>
-        <span class="material-symbols-outlined text-sm">expand_more</span>
-      </button>
-      <div *ngIf="showAccount()" class="absolute right-0 mt-2 w-48 bg-white border rounded shadow">
-        <a routerLink="/classes" class="block px-3 py-2 text-sm hover:bg-gray-50">My Courses</a>
-        <a routerLink="/course/create" class="block px-3 py-2 text-sm hover:bg-gray-50">Create Course</a>
-        <a routerLink="/tutors/become" class="block px-3 py-2 text-sm hover:bg-gray-50">Become a Tutor</a>
+      <span class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-semibold">Bs</span>
+      <div>
+        <div class="text-sm font-semibold text-slate-900">Berjis Schools</div>
+        <div class="text-xs text-slate-500">Control centre</div>
       </div>
     </div>
-  </div>
+    <nav class="space-y-1 text-sm">
+      <a routerLink="/" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">space_dashboard</span>Home
+      </a>
+      <a routerLink="/classes" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">auto_stories</span>Courses
+      </a>
+      <a routerLink="/subjects" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">inventory_2</span>Subjects
+      </a>
+      <a routerLink="/lessons" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">play_circle</span>Lessons
+      </a>
+      <a routerLink="/tests" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">quiz</span>Assessments
+      </a>
+      <a routerLink="/schools/staff" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">account_tree</span>School admin
+      </a>
+      <a routerLink="/moderation" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-50 text-slate-700" routerLinkActive="bg-rose-50 text-rose-700">
+        <span class="material-symbols-outlined text-base">shield</span>Moderation
+      </a>
+    </nav>
+    <div class="mt-auto text-xs text-slate-400">Powered by berjis.tech</div>
+  </aside>
 
-  <!-- Body with sidebar -->
-  <div class="flex" style="height: calc(100vh - 3.5rem)">
-    <aside *ngIf="showSidebar()" class="w-64 border-r p-3 bg-gray-50 space-y-2">
-      <a routerLink="/" class="block px-2 py-2 rounded hover:bg-gray-100">Home</a>
-      <a routerLink="/classes" class="block px-2 py-2 rounded hover:bg-gray-100">Courses</a>
-      <a routerLink="/subjects" class="block px-2 py-2 rounded hover:bg-gray-100">Subjects</a>
-      <a routerLink="/lessons" class="block px-2 py-2 rounded hover:bg-gray-100">Lessons</a>
-      <a routerLink="/tests" class="block px-2 py-2 rounded hover:bg-gray-100">Tests</a>
-      <a routerLink="/moderation" class="block px-2 py-2 rounded hover:bg-gray-100">Moderation</a>
-    </aside>
-    <main class="flex-1 overflow-auto">
+  <div class="flex-1 flex flex-col min-h-screen">
+    <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-lg">
+      <div class="px-4 md:px-8 h-16 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <button class="lg:hidden rounded-full border border-slate-200 p-2" (click)="toggleSidebar()" aria-label="Toggle navigation">
+            <span class="material-symbols-outlined">menu</span>
+          </button>
+          <a routerLink="/" class="text-lg font-semibold text-slate-900 hidden lg:inline-flex">Berjis Schools</a>
+        </div>
+        <form class="flex items-center gap-2 flex-1 max-w-2xl bg-slate-100 border border-slate-200 rounded-full px-4 py-2" (submit)="onSearchSubmit()">
+          <span class="material-symbols-outlined text-slate-500 text-base">search</span>
+          <input class="flex-1 bg-transparent text-sm focus:outline-none" type="text" placeholder="Search courses, lessons, tutors" [ngModel]="search()" (ngModelChange)="search.set()" name="q" />
+        </form>
+        <div class="flex items-center gap-3">
+          <a routerLink="/course/create" class="hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-full bg-rose-600 text-white text-sm shadow-sm">
+            <span class="material-symbols-outlined text-base">add</span>New course
+          </a>
+          <div class="relative">
+            <button class="flex items-center gap-2 px-3 py-2 rounded-full border border-slate-200 text-sm" (click)="toggleAccount()">
+              <span class="material-symbols-outlined text-base text-rose-600">account_circle</span>
+              <span>Account</span>
+              <span class="material-symbols-outlined text-xs">expand_more</span>
+            </button>
+            <div *ngIf="showAccount()" class="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-2 text-sm">
+              <a routerLink="/classes" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-50">
+                <span class="material-symbols-outlined text-base text-rose-500">library_books</span>My courses
+              </a>
+              <a routerLink="/schools/staff" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-50">
+                <span class="material-symbols-outlined text-base text-emerald-500">diversity_3</span>School console
+              </a>
+              <a routerLink="/tutors/become" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-50">
+                <span class="material-symbols-outlined text-base text-orange-500">workspace_premium</span>Tutor status
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto">
       <router-outlet></router-outlet>
     </main>
   </div>
 </div>
 
 <ng-template #guest>
-  <div class="h-14 px-4 border-b flex items-center justify-between bg-white">
-    <a routerLink="/" class="font-bold">Schools</a>
-    <a [href]="loginHref" class="px-3 py-2 rounded bg-gray-900 text-white text-sm">Sign in</a>
+  <div class="min-h-screen bg-slate-50">
+    <header class="border-b border-slate-200 bg-white/90 backdrop-blur-lg">
+      <div class="max-w-6xl mx-auto px-6 md:px-8 h-16 flex items-center justify-between">
+        <a routerLink="/" class="flex items-center gap-2 text-slate-900 font-semibold text-lg">
+          <span class="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center">Bs</span>
+          Berjis Schools
+        </a>
+        <a [href]="loginHref" class="px-4 py-2 rounded-full bg-rose-600 text-white text-sm shadow-sm">Sign in</a>
+      </div>
+    </header>
+    <router-outlet></router-outlet>
   </div>
-  <router-outlet></router-outlet>
 </ng-template>
-
