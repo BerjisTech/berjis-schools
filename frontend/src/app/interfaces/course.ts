@@ -50,6 +50,7 @@ export interface Lesson {
   orderIndex?: number;
   isFree?: boolean;
   estimatedMinutes?: number;
+  status?: 'active' | 'archived' | 'deleted';
 }
 
 export interface Subject {
@@ -58,6 +59,7 @@ export interface Subject {
   title: string;
   description?: string | null;
   orderIndex: number;
+  status?: 'active' | 'archived' | 'deleted';
 }
 
 export interface Course {
@@ -79,6 +81,9 @@ export interface Course {
   subjectCount?: number;
   lessonCount?: number;
   testCount?: number;
+  schoolId?: string | null;
+  isEnrolled?: boolean;
+  status?: 'active' | 'archived' | 'deleted';
   subjects?: Subject[];
 }
 
@@ -93,6 +98,7 @@ export interface TestItem {
   visibility: 'public' | 'private';
   createdByUserId?: string;
   createdAt?: string;
+  status?: 'active' | 'archived' | 'deleted';
 }
 
 export type TestPlacementStrategy =

@@ -1,7 +1,83 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { urlFor } from '../../app/util';
+
+type VerifyDocKey = 'registrationCertUrl' | 'taxPinUrl' | 'proofAddressUrl' | 'founderIdUrl';
+type FinanceDocKey = 'taxDocsUrl' | 'bankStatementUrl';
+
+const INFO_TEMPLATE = {
+  name: '',
+  legalName: '',
+  registrationNumber: '',
+  country: '',
+  businessType: '',
+  website: '',
+  social: '',
+  logoUrl: '',
+  description: '',
+  contact: { name: '', email: '', phone: '' }
+};
+
+const VERIFY_TEMPLATE = {
+  registrationCertUrl: '',
+  taxPinUrl: '',
+  proofAddressUrl: '',
+  founderIdUrl: '',
+  authorizationLetterUrl: '',
+  accreditationUrl: '',
+  insuranceUrl: ''
+};
+
+const STAFF_TEMPLATE = {
+  tutors: [] as Array<{ userId: string; role: string; status: 'pending' | 'verified' }>,
+  adminRoles: '',
+  contractTerms: ''
+};
+
+const FINANCE_TEMPLATE = {
+  payoutMethod: '',
+  currency: '',
+  bankDetails: '',
+  revenueModel: '',
+  taxDocsUrl: [] as string[],
+  bankStatementUrl: [] as string[]
+};
+
+const CURRICULUM_TEMPLATE = {
+  subjects: '',
+  targets: '',
+  format: '',
+  languages: '',
+  outlineUrl: '',
+  sampleUrl: '',
+  demoUrl: ''
+};
+
+const AGREEMENTS_TEMPLATE = {
+  partnership: false,
+  privacy: false,
+  revenueSplit: false,
+  codeOfConduct: false,
+  quality: false,
+  antiFraud: false,
+  refund: false
+};
+
+const EXTRAS_TEMPLATE = {
+  mediaUrls: '',
+  testimonials: '',
+  bannerUrl: '',
+  subdomain: '',
+  themeColor: '',
+  integrations: '',
+  partnershipType: ''
+};
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
 
 @Component({
   selector: 'app-create-school-page',
@@ -11,22 +87,40 @@ import { urlFor } from '../../app/util';
 })
 export class CreateSchoolPage implements OnInit {
   // Form state
-  info: any = { name: '', legalName: '', registrationNumber: '', country: '', businessType: '', website: '', social: '', logoUrl: '', description: '', contact: { name: '', email: '', phone: '' } };
-  verify: any = { registrationCertUrl: '', taxPinUrl: '', proofAddressUrl: '', founderIdUrl: '', authorizationLetterUrl: '', accreditationUrl: '', insuranceUrl: '' };
+  info: any = clone(INFO_TEMPLATE);
+  verify: any = clone(VERIFY_TEMPLATE);
   // hold selected PDF Files (uploaded later)
-  verifyFiles: Record<string, File|null> = { registrationCertUrl: null, taxPinUrl: null, proofAddressUrl: null, founderIdUrl: null } as any;
-  staff: any = { tutors: [] as Array<{ userId: string; role: string; status: 'pending'|'verified' }>, adminRoles: '', contractTerms: '' };
+  verifyFiles: Record<VerifyDocKey, File | null> = {
+    registrationCertUrl: null,
+    taxPinUrl: null,
+    proofAddressUrl: null,
+    founderIdUrl: null
+  };
+  staff: any = clone(STAFF_TEMPLATE);
   tutorSearchQuery = '';
   tutorResults: Array<{ userId: string; displayName?: string|null }> = [];
-  finance: any = { payoutMethod: '', currency: '', bankDetails: '', revenueModel: '', taxDocsUrl: [] as string[], bankStatementUrl: [] as string[] };
-  financeFiles: Record<string, File[]|null> = { taxDocsUrl: null, bankStatementUrl: null } as any;
-  curriculum: any = { subjects: '', targets: '', format: '', languages: '', outlineUrl: '', sampleUrl: '', demoUrl: '' };
-  agreements: any = { partnership: false, privacy: false, revenueSplit: false, codeOfConduct: false, quality: false, antiFraud: false, refund: false };
-  extras: any = { mediaUrls: '', testimonials: '', bannerUrl: '', subdomain: '', themeColor: '', integrations: '', partnershipType: '' };
+  finance: any = clone(FINANCE_TEMPLATE);
+  financeFiles: Record<FinanceDocKey, File[] | null> = {
+    taxDocsUrl: null,
+    bankStatementUrl: null
+  };
+  curriculum: any = clone(CURRICULUM_TEMPLATE);
+  agreements: any = clone(AGREEMENTS_TEMPLATE);
+  extras: any = clone(EXTRAS_TEMPLATE);
 
   // UI state
   step = 0;
-  steps = ['School Info','Verification','Staff & Tutors','Financial','Curriculum','Agreements','Extras','Review & Submit'];
+  readonly stepDefinitions = [
+    { slug: 'info', label: 'School Info' },
+    { slug: 'verification', label: 'Verification' },
+    { slug: 'staff', label: 'Staff & Tutors' },
+    { slug: 'financial', label: 'Financial' },
+    { slug: 'curriculum', label: 'Curriculum' },
+    { slug: 'agreements', label: 'Agreements' },
+    { slug: 'extras', label: 'Extras' },
+    { slug: 'review', label: 'Review & Submit' }
+  ];
+  private currentSlug = this.stepDefinitions[0].slug;
   saving = false;
   message = '';
   uploadError = '';
@@ -37,7 +131,27 @@ export class CreateSchoolPage implements OnInit {
   // expose urlFor in template
   urlFor = urlFor;
 
-  ngOnInit() { this.loadDraft(); this.refreshStatus() }
+  constructor(private route: ActivatedRoute, private router: Router) {}
+
+  ngOnInit() {
+    this.route.paramMap.subscribe(params => {
+      const slug = params.get('section') ?? this.stepDefinitions[0].slug;
+      const idx = this.stepDefinitions.findIndex(def => def.slug === slug);
+      if (idx === -1) {
+        this.router.navigate(['/schools/create', this.stepDefinitions[0].slug], { replaceUrl: true });
+        return;
+      }
+      this.currentSlug = slug;
+      const max = this.maxReachableStep();
+      if (idx > max) {
+        this.goToStep(max, true);
+        return;
+      }
+      this.step = idx;
+    });
+    this.loadDraft();
+    this.refreshStatus();
+  }
 
   async refreshStatus() {
     try {
@@ -47,15 +161,26 @@ export class CreateSchoolPage implements OnInit {
       if (d) {
         this.status = d.status;
         this.statusLine = `Current status: ${d.status}`;
-        this.info = d.info || this.info;
-        this.verify = d.verify || this.verify;
-        this.staff = d.staff || this.staff;
-        this.finance = d.finance || this.finance;
-        this.curriculum = d.curriculum || this.curriculum;
-        this.agreements = d.agreements || this.agreements;
-        this.extras = d.extras || this.extras;
-      } else { this.status = null; this.statusLine = '' }
-    } catch { this.status = null; this.statusLine = '' }
+        this.info = this.parseSection(d.info, INFO_TEMPLATE);
+        this.verify = this.parseSection(d.verify, VERIFY_TEMPLATE);
+        this.staff = this.parseSection(d.staff, STAFF_TEMPLATE);
+        this.finance = this.parseSection(d.finance, FINANCE_TEMPLATE);
+        this.curriculum = this.parseSection(d.curriculum, CURRICULUM_TEMPLATE);
+        this.agreements = this.parseSection(d.agreements, AGREEMENTS_TEMPLATE);
+        this.extras = this.parseSection(d.extras, EXTRAS_TEMPLATE);
+        this.resetUploadBuffers();
+        const reachable = this.maxReachableStep();
+        if (this.step > reachable) {
+          this.goToStep(reachable, true);
+        }
+      } else {
+        this.status = null;
+        this.statusLine = '';
+      }
+    } catch {
+      this.status = null;
+      this.statusLine = '';
+    }
   }
 
   get progressPct(): number {
@@ -70,8 +195,29 @@ export class CreateSchoolPage implements OnInit {
     try { return JSON.stringify(data, null, 2) } catch { return '' }
   }
 
-  back() { if (this.step > 0) this.step--; }
-  next() { if (this.validForStep(this.step) && this.step < this.steps.length - 1) this.step++; }
+  back() { if (this.step > 0) this.goToStep(this.step - 1); }
+  next() {
+    if (this.validForStep(this.step) && this.step < this.stepDefinitions.length - 1) {
+      this.goToStep(this.step + 1);
+    }
+  }
+
+  goToStep(index: number, replaceUrl = false) {
+    if (index < 0 || index >= this.stepDefinitions.length) return;
+    if (!this.canGoTo(index)) return;
+    const targetSlug = this.stepDefinitions[index].slug;
+    this.step = index;
+    if (this.currentSlug !== targetSlug) {
+      this.currentSlug = targetSlug;
+      this.router.navigate(['/schools/create', targetSlug], { replaceUrl });
+    }
+  }
+
+  onStepClick(index: number) {
+    if (this.canGoTo(index)) {
+      this.goToStep(index);
+    }
+  }
 
   addTutor() { /* deprecated in favor of search add */ }
   removeTutor(i: number) { this.staff.tutors.splice(i, 1) }
@@ -89,7 +235,8 @@ export class CreateSchoolPage implements OnInit {
     this.tutorSearchQuery = ''; this.tutorResults = [];
   }
 
-  onVerifyFileChange(key: string, ev: Event) {
+  onVerifyFileChange(key: VerifyDocKey, ev: Event) {
+    this.ensureFormShape();
     const input = ev.target as HTMLInputElement;
     const file = (input.files && input.files[0]) || null;
     this.uploadError = '';
@@ -97,7 +244,8 @@ export class CreateSchoolPage implements OnInit {
     if (file) this.verify[key] = file.name;
   }
 
-  onFinanceFileChange(key: string, ev: Event) {
+  onFinanceFileChange(key: FinanceDocKey, ev: Event) {
+    this.ensureFormShape();
     const input = ev.target as HTMLInputElement;
     const files = (input.files && Array.from(input.files)) || null;
     this.uploadError = '';
@@ -106,8 +254,15 @@ export class CreateSchoolPage implements OnInit {
   }
 
   fieldsMissingForStep(step: number): string[] {
+    this.ensureFormShape();
     const miss: string[] = [];
     const s = (v: any) => (typeof v === 'string' ? v.trim() : '');
+    const hasDoc = (key: VerifyDocKey) => {
+      const file = this.verifyFiles[key];
+      if (file && typeof file.name === 'string' && file.name.trim()) return true;
+      const value = this.verify?.[key];
+      return typeof value === 'string' && value.trim().length > 0;
+    };
     if (step === 0) {
       if (!s(this.info.name)) miss.push('Official school name');
       if (!s(this.info.country)) miss.push('Country of registration');
@@ -117,10 +272,10 @@ export class CreateSchoolPage implements OnInit {
       if (!s(this.info.contact?.phone)) miss.push('Primary contact phone');
       if (!s(this.info.description)) miss.push('Short description');
     } else if (step === 1) {
-      if (!this.verifyFiles.registrationCertUrl) miss.push('Registration certificate (PDF)');
-      if (!this.verifyFiles.taxPinUrl) miss.push('Tax identification/PIN (PDF)');
-      if (!this.verifyFiles.proofAddressUrl) miss.push('Proof of address (PDF)');
-      if (!this.verifyFiles.founderIdUrl) miss.push('Founder/admin ID (PDF)');
+      if (!hasDoc('registrationCertUrl')) miss.push('Registration certificate (PDF)');
+      if (!hasDoc('taxPinUrl')) miss.push('Tax identification/PIN (PDF)');
+      if (!hasDoc('proofAddressUrl')) miss.push('Proof of address (PDF)');
+      if (!hasDoc('founderIdUrl')) miss.push('Founder/admin ID (PDF)');
     } else if (step === 2) {
       if (!this.staff.tutors.length) miss.push('At least one tutor/instructor');
     } else if (step === 3) {
@@ -147,10 +302,17 @@ export class CreateSchoolPage implements OnInit {
   }
 
   validForStep(step: number): boolean { return this.fieldsMissingForStep(step).length === 0 }
-  maxReachableStep(): number { for (let i = 0; i <= 5; i++) { if (!this.validForStep(i)) return i } return 7 }
+  maxReachableStep(): number {
+    const lastIndex = this.stepDefinitions.length - 1;
+    for (let i = 0; i < lastIndex; i++) {
+      if (!this.validForStep(i)) return i;
+    }
+    return lastIndex;
+  }
   canGoTo(i: number): boolean { return i <= this.maxReachableStep() }
 
   missingRequired(): string[] {
+    this.ensureFormShape();
     const miss: string[] = [];
     const s = (v: any) => (typeof v === 'string' ? v.trim() : '');
     if (!s(this.info.name)) miss.push('info.name');
@@ -191,17 +353,101 @@ export class CreateSchoolPage implements OnInit {
       const raw = localStorage.getItem('schoolOnboardingDraft');
       if (!raw) return;
       const d = JSON.parse(raw);
-      this.info = d.info || this.info;
-      this.verify = d.verify || this.verify;
-      this.staff = d.staff || this.staff;
-      this.finance = d.finance || this.finance;
-      this.curriculum = d.curriculum || this.curriculum;
-      this.agreements = d.agreements || this.agreements;
-      this.extras = d.extras || this.extras;
+      this.info = this.parseSection(d.info, INFO_TEMPLATE);
+      this.verify = this.parseSection(d.verify, VERIFY_TEMPLATE);
+      this.staff = this.parseSection(d.staff, STAFF_TEMPLATE);
+      this.finance = this.parseSection(d.finance, FINANCE_TEMPLATE);
+      this.curriculum = this.parseSection(d.curriculum, CURRICULUM_TEMPLATE);
+      this.agreements = this.parseSection(d.agreements, AGREEMENTS_TEMPLATE);
+      this.extras = this.parseSection(d.extras, EXTRAS_TEMPLATE);
+      this.resetUploadBuffers();
+      const reachable = this.maxReachableStep();
+      if (this.step > reachable) {
+        this.goToStep(reachable, true);
+      }
     } catch {}
   }
 
+  private parseSection<T>(raw: any, template: T): T {
+    if (raw == null) return clone(template);
+    if (typeof raw === 'object') return this.mergeSection(template, raw);
+    if (typeof raw === 'string') {
+      const parsed = this.tryParseJson(raw);
+      if (parsed !== undefined) return this.mergeSection(template, parsed);
+      const decoded = this.tryDecodeBase64(raw);
+      if (decoded !== undefined) {
+        const parsedDecoded = this.tryParseJson(decoded);
+        if (parsedDecoded !== undefined) return this.mergeSection(template, parsedDecoded);
+      }
+    }
+    return clone(template);
+  }
+
+  private mergeSection<T>(template: T, patch: any): T {
+    const base = clone(template);
+    if (!patch || typeof patch !== 'object') return base;
+    const stack: Array<{ target: any; source: any }> = [{ target: base, source: patch }];
+    while (stack.length) {
+      const { target, source } = stack.pop()!;
+      for (const key of Object.keys(source)) {
+        const value = source[key];
+        if (Array.isArray(value)) {
+          target[key] = value.slice();
+        } else if (value && typeof value === 'object') {
+          if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+            target[key] = clone(value);
+          } else {
+            stack.push({ target: target[key], source: value });
+          }
+        } else {
+          target[key] = value;
+        }
+      }
+    }
+    return base;
+  }
+
+  private tryParseJson(value: string): any | undefined {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private tryDecodeBase64(value: string): string | undefined {
+    try {
+      if (typeof atob === 'function') {
+        return atob(value);
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  private resetUploadBuffers() {
+    this.verifyFiles = {
+      registrationCertUrl: null,
+      taxPinUrl: null,
+      proofAddressUrl: null,
+      founderIdUrl: null
+    };
+    this.financeFiles = { taxDocsUrl: null, bankStatementUrl: null };
+  }
+
+  private ensureFormShape() {
+    this.info = this.parseSection(this.info, INFO_TEMPLATE);
+    this.verify = this.parseSection(this.verify, VERIFY_TEMPLATE);
+    this.staff = this.parseSection(this.staff, STAFF_TEMPLATE);
+    this.finance = this.parseSection(this.finance, FINANCE_TEMPLATE);
+    this.curriculum = this.parseSection(this.curriculum, CURRICULUM_TEMPLATE);
+    this.agreements = this.parseSection(this.agreements, AGREEMENTS_TEMPLATE);
+    this.extras = this.parseSection(this.extras, EXTRAS_TEMPLATE);
+  }
+
   collectPayload() {
+    this.ensureFormShape();
     return {
       info: this.info,
       verify: this.verify,
@@ -219,6 +465,7 @@ export class CreateSchoolPage implements OnInit {
   async apply(draft: boolean, silent = false) {
     this.saving = true; this.message = ''; this.success = false;
     try {
+      this.ensureFormShape();
       if (!draft) {
         const missing = this.missingRequired();
         if (missing.length) throw new Error(`Missing required fields: ${missing.join(', ')}`);
@@ -235,11 +482,15 @@ export class CreateSchoolPage implements OnInit {
       };
       this.uploading = true;
       try {
-        for (const k of Object.keys(this.verifyFiles)) {
-          const f = this.verifyFiles[k]; if (f) { this.verify[k] = await upload(f) }
+        for (const k of Object.keys(this.verifyFiles) as VerifyDocKey[]) {
+          const f = this.verifyFiles[k];
+          if (f) {
+            this.verify[k] = await upload(f);
+          }
         }
-        for (const k of Object.keys(this.financeFiles)) {
-          const arr = this.financeFiles[k]; if (arr && arr.length) {
+        for (const k of Object.keys(this.financeFiles) as FinanceDocKey[]) {
+          const arr = this.financeFiles[k];
+          if (arr && arr.length) {
             const urls: string[] = [];
             for (const f of arr) { urls.push(await upload(f)) }
             this.finance[k] = urls;

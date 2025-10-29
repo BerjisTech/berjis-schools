@@ -7,19 +7,21 @@ interface ClassItemApi {
   id: string;
   title: string;
   description?: string | null;
-  tutor_user_id?: string;
+  tutorUserId?: string;
   visibility?: string;
-  is_paid?: boolean;
-  price_cents?: number;
-  student_count?: number;
-  subject_count?: number;
-  lesson_count?: number;
-  test_count?: number;
-  school_id?: string | null;
+  isPaid?: boolean;
+  priceCents?: number;
+  studentCount?: number;
+  subjectCount?: number;
+  lessonCount?: number;
+  testCount?: number;
+  schoolId?: string | null;
+  status?: string;
+  isEnrolled?: boolean;
 }
-interface SubjectApi { id: string; class_id: string; title: string; description?: string | null; order_index: number }
-interface LessonApi { id: string; subject_id: string; title: string; type: string; content?: any; order_index: number; is_free: boolean }
-interface TestApi { id: string; school_id?: string | null; subject_id?: string | null; lesson_id?: string | null; title: string; description?: string | null; visibility: string; created_by_user_id?: string; created_at?: string }
+interface SubjectApi { id: string; classId: string; title: string; description?: string | null; orderIndex: number; status?: string }
+interface LessonApi { id: string; subjectId: string; title: string; type: string; content?: any; orderIndex: number; isFree: boolean; status?: string }
+interface TestApi { id: string; schoolId?: string | null; subjectId?: string | null; lessonId?: string | null; title: string; description?: string | null; visibility: string; status?: string; createdByUserId?: string; createdAt?: string }
 interface TestWithQuestionsApi { test: TestApi; questions: any[] }
 
 @Injectable({ providedIn: 'root' })
@@ -71,7 +73,7 @@ export class SchoolsService {
     const res = await fetch(`${this.api}/v1/subjects?class_id=${encodeURIComponent(classId)}`, { credentials: 'include' });
     const j = await res.json();
     const rows: SubjectApi[] = j?.data ?? [];
-    return rows.map(r => ({ id: r.id, classId: r.class_id, title: r.title, description: r.description ?? undefined, orderIndex: r.order_index }));
+    return rows.map(r => ({ id: r.id, classId: r.classId, title: r.title, description: r.description ?? undefined, orderIndex: r.orderIndex, status: r.status as any }));
   }
 
   async createSubject(input: { classId: string; title: string; description?: string; orderIndex?: number }): Promise<Subject> {
@@ -79,7 +81,7 @@ export class SchoolsService {
     const res = await fetch(`${this.api}/v1/subjects`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await res.json();
     const r: SubjectApi = j?.data;
-    return { id: r.id, classId: r.class_id, title: r.title, description: r.description ?? undefined, orderIndex: r.order_index };
+    return { id: r.id, classId: r.classId, title: r.title, description: r.description ?? undefined, orderIndex: r.orderIndex, status: r.status as any };
   }
 
   async listLessons(subjectId: string): Promise<Lesson[]> {
@@ -120,14 +122,17 @@ export class SchoolsService {
     name: r.title,
     title: r.title,
     description: r.description ?? '',
-    isPaid: !!r.is_paid,
-    priceCents: r.price_cents ?? 0,
+    isPaid: !!r.isPaid,
+    priceCents: r.priceCents ?? 0,
     visibility: (r.visibility as any) ?? 'public',
-    tutorUserId: r.tutor_user_id,
-    studentCount: r.student_count,
-    subjectCount: (r as any).subject_count ?? undefined,
-    lessonCount: (r as any).lesson_count ?? undefined,
-    testCount: (r as any).test_count ?? undefined,
+    tutorUserId: r.tutorUserId?.trim(),
+    studentCount: r.studentCount,
+    subjectCount: r.subjectCount ?? undefined,
+    lessonCount: r.lessonCount ?? undefined,
+    testCount: r.testCount ?? undefined,
+    schoolId: r.schoolId ?? null,
+    isEnrolled: !!r.isEnrolled,
+    status: (r.status as any) ?? 'active',
   });
 
   private mapLesson = (r: LessonApi): Lesson => {
@@ -136,25 +141,27 @@ export class SchoolsService {
       id: r.id,
       title: r.title,
       description: undefined,
-      subjectId: r.subject_id,
+      subjectId: r.subjectId,
       type: r.type as any,
       content: r.content,
-      orderIndex: r.order_index,
-      isFree: !!r.is_free,
+      orderIndex: r.orderIndex,
+      isFree: !!r.isFree,
       estimatedMinutes,
+      status: (r.status as any) ?? 'active',
     };
   };
 
   private mapTest = (r: TestApi): TestItem => ({
     id: r.id,
-    schoolId: r.school_id ?? undefined,
-    subjectId: r.subject_id ?? undefined,
-    lessonId: r.lesson_id ?? undefined,
+    schoolId: r.schoolId ?? undefined,
+    subjectId: r.subjectId ?? undefined,
+    lessonId: r.lessonId ?? undefined,
     title: r.title,
     description: r.description ?? undefined,
     visibility: (r.visibility as any) ?? 'private',
-    createdByUserId: r.created_by_user_id,
-    createdAt: r.created_at,
+    createdByUserId: r.createdByUserId,
+    createdAt: r.createdAt,
+    status: (r.status as any) ?? 'active',
   });
 
   async getTestById(id: string): Promise<{ test: TestItem; questions: TestQuestion[]; classId?: string; canEdit?: boolean } | null> {
@@ -396,18 +403,70 @@ export class SchoolsService {
     }
   }
 
-  async updateCourse(courseId: string, payload: { title?: string; description?: string; visibility?: 'public'|'private'|'school'; isPaid?: boolean; priceCents?: number }): Promise<boolean> {
+  async getTutorStatus(): Promise<string | null> {
+    try {
+      const res = await fetch(`${this.api}/v1/tutors/me`, { credentials: 'include' });
+      if (!res.ok) return null;
+      const j = await res.json();
+      const status = j?.data?.status;
+      if (typeof status === 'string' && status.trim().length > 0) {
+        return status;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async isTutor(): Promise<boolean> {
+    const status = (await this.getTutorStatus())?.toLowerCase() ?? '';
+    if (!status) return false;
+    return ['approved', 'active', 'onboarded', 'verified'].includes(status);
+  }
+
+  async updateCourse(courseId: string, payload: { title?: string; description?: string; visibility?: 'public'|'private'|'school'; isPaid?: boolean; priceCents?: number; status?: 'active'|'archived'|'deleted' }): Promise<boolean> {
     const body: any = {};
     if (payload.title !== undefined) body.title = payload.title;
     if (payload.description !== undefined) body.description = payload.description;
     if (payload.visibility !== undefined) body.visibility = payload.visibility;
     if (payload.isPaid !== undefined) body.isPaid = payload.isPaid;
     if (payload.priceCents !== undefined) body.priceCents = payload.priceCents;
+    if (payload.status !== undefined) body.status = payload.status;
     const res = await fetch(`${this.api}/v1/classes/${courseId}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
+    });
+    return res.ok;
+  }
+
+  async updateSubjectStatus(subjectId: string, status: 'active'|'archived'|'deleted'): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/subjects/${subjectId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    return res.ok;
+  }
+
+  async updateLessonStatus(lessonId: string, status: 'active'|'archived'|'deleted'): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/lessons/${lessonId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    return res.ok;
+  }
+
+  async updateTestStatus(testId: string, status: 'active'|'archived'|'deleted'): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/tests/${testId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
     });
     return res.ok;
   }

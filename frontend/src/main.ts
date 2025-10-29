@@ -5,7 +5,6 @@ import { ClassesPage } from './app/pages/classes.page';
 import { SubjectsPage } from './app/pages/subjects.page';
 import { LessonsPage } from './app/pages/lessons.page';
 import { TestsPage } from './app/pages/tests.page';
-import { CreateSchoolPage } from './app/pages/create-school.page';
 import { SchoolStaffPage } from './app/pages/school-staff.page';
 import { BecomeTutorPage } from './app/pages/become-tutor.page';
 import { ModerationPage } from './app/pages/moderation.page';
@@ -20,6 +19,7 @@ import { AppComponent } from './app/app.component';
 import { SearchPage } from './app/pages/search.page';
 import { authGuard } from './app/guards/auth.guard';
 import { MyCoursesPage } from './app/pages/my-courses.page';
+import { CreateSchoolPage } from './app/pages/create-school.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -29,7 +29,8 @@ const routes: Routes = [
   { path: 'subjects', loadComponent: () => Promise.resolve(SubjectsPage) },
   { path: 'lessons', loadComponent: () => Promise.resolve(LessonsPage), canActivate: [authGuard] },
   { path: 'tests', loadComponent: () => Promise.resolve(TestsPage), canActivate: [authGuard] },
-  { path: 'schools/create', loadComponent: () => Promise.resolve(CreateSchoolPage), canActivate: [authGuard] },
+  { path: 'schools/create', redirectTo: 'schools/create/info', pathMatch: 'full' },
+  { path: 'schools/create/:section', loadComponent: () => Promise.resolve(CreateSchoolPage), canActivate: [authGuard] },
   { path: 'schools/staff', loadComponent: () => Promise.resolve(SchoolStaffPage), canActivate: [authGuard] },
   { path: 'tutors/become', loadComponent: () => Promise.resolve(BecomeTutorPage), canActivate: [authGuard] },
   { path: 'moderation', loadComponent: () => Promise.resolve(ModerationPage), canActivate: [authGuard] },

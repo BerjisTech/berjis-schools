@@ -11,11 +11,11 @@
   </div>
 
   <nav class="flex flex-wrap gap-2 mb-4">
-    <button type="button" *ngFor="let s of steps; let i = index"
-            (click)="canGoTo(i) && (step=i)"
+    <button type="button" *ngFor="let def of stepDefinitions; let i = index"
+            (click)="onStepClick(i)"
             class="px-3 py-1 rounded border text-sm"
             [class.opacity-50]="!canGoTo(i)" [disabled]="!canGoTo(i)"
-            [class.bg-blue-600]="i===step" [class.text-white]="i===step" [class.border-blue-600]="i===step">{{ s }}</button>
+            [class.bg-blue-600]="i===step" [class.text-white]="i===step" [class.border-blue-600]="i===step">{{ def.label }}</button>
   </nav>
 
   <form class="space-y-6" (ngSubmit)="submit(false)">

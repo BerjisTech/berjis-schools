@@ -13,9 +13,11 @@
           </div>
         </div>
         <div class="flex flex-col items-end gap-2">
-          <button class="px-4 py-2 rounded-md bg-blue-600 text-white" (click)="enroll()" [disabled]="enrolling()">
+          <button *ngIf="!isOwner() && !enrolled()" class="px-4 py-2 rounded-md bg-blue-600 text-white" (click)="enroll()" [disabled]="enrolling()">
             {{ enrolling() ? 'Enrolling…' : 'Enroll' }}
           </button>
+          <div class="text-xs text-emerald-700" *ngIf="enrolled() && !isOwner()">You’re enrolled in this course.</div>
+          <div class="text-xs text-gray-500" *ngIf="isOwner()">You created this course.</div>
           <div class="text-xs text-gray-500">Lead tutor: {{ c.tutorUserId || 'Unknown' }}</div>
         </div>
       </div>
@@ -43,13 +45,25 @@
         <h2 class="text-lg font-semibold">Manage your course</h2>
         <p class="text-xs text-emerald-700">Add subjects, create lessons (including simulations), and schedule assessments for your students.</p>
       </div>
-      <form class="flex flex-col md:flex-row gap-3" (ngSubmit)="createSubject()">
-        <input class="flex-1 border border-emerald-200 rounded-md px-3 py-2 text-sm" placeholder="New subject title"
+      <form class="space-y-3" (ngSubmit)="createSubject()">
+        <input class="w-full border border-emerald-200 rounded-md px-3 py-2 text-sm" placeholder="New subject title"
           [ngModel]="subjectTitle()" (ngModelChange)="subjectTitle.set($event)" name="subjectTitle" />
-        <button type="submit" class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700" [disabled]="creatingSubject() || !subjectTitle().trim()">
-          {{ creatingSubject() ? 'Adding…' : 'Add Subject' }}
-        </button>
+        <textarea class="w-full border border-emerald-200 rounded-md px-3 py-2 text-sm" rows="2"
+          placeholder="Brief subject description"
+          [ngModel]="subjectDescription()" (ngModelChange)="subjectDescription.set($event)" name="subjectDescription"></textarea>
+        <div class="flex justify-end">
+          <button type="submit" class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700" [disabled]="creatingSubject() || !subjectTitle().trim()">
+            {{ creatingSubject() ? 'Adding…' : 'Add Subject' }}
+          </button>
+        </div>
       </form>
+      <div class="border-t border-emerald-200 pt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <span class="text-emerald-700">Archive to pause access or delete to retire the course (soft delete).</span>
+        <div class="flex gap-2">
+          <button type="button" class="px-3 py-1 rounded-md border border-emerald-300 text-emerald-700 hover:bg-emerald-100" (click)="archiveCourse()">Archive course</button>
+          <button type="button" class="px-3 py-1 rounded-md border border-rose-300 text-rose-700 hover:bg-rose-100" (click)="deleteCourse()">Delete course</button>
+        </div>
+      </div>
     </section>
 
     <div class="space-y-6">
@@ -62,6 +76,8 @@
           <div class="flex flex-wrap gap-2" *ngIf="isOwner()">
             <button class="px-3 py-1 rounded-md border border-gray-300 text-sm hover:bg-gray-50" (click)="openLessonForm(s.id)">Add lesson</button>
             <button class="px-3 py-1 rounded-md border border-gray-300 text-sm hover:bg-gray-50" (click)="openTestForm(s.id)">Add assessment</button>
+            <button class="px-3 py-1 rounded-md border border-amber-200 text-xs text-amber-700 hover:bg-amber-50" (click)="archiveSubject(s.id)">Archive</button>
+            <button class="px-3 py-1 rounded-md border border-rose-200 text-xs text-rose-700 hover:bg-rose-50" (click)="deleteSubject(s.id)">Delete</button>
           </div>
         </div>
 
@@ -98,12 +114,18 @@
               </div>
             </div>
 
-            <div class="space-y-3" [ngSwitch]="lessonFormState.type">
-              <div *ngSwitchCase="'text'">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Lesson body (HTML or Markdown)</label>
-                <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="4"
-                  [(ngModel)]="lessonFormState.textHtml"
-                  name="lessonText-{{s.id}}" placeholder="<p>Welcome...</p>"></textarea>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Lesson description</label>
+                <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="2"
+                  [(ngModel)]="lessonFormState.description" name="lessonDescription-{{s.id}}" placeholder="What outcomes will learners achieve?"></textarea>
+              </div>
+              <div [ngSwitch]="lessonFormState.type">
+                <div *ngSwitchCase="'text'">
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Lesson body (HTML or Markdown)</label>
+                  <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="4"
+                    [(ngModel)]="lessonFormState.textHtml"
+                    name="lessonText-{{s.id}}" placeholder="<p>Welcome...</p>"></textarea>
               </div>
               <div *ngSwitchCase="'audio'" class="grid md:grid-cols-2 gap-3">
                 <div>
@@ -171,13 +193,14 @@
                 </div>
               </div>
             </div>
-            <div class="flex justify-end">
-              <button type="button" class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
-                (click)="createLesson()" [disabled]="creatingLesson() || !lessonFormState.title.trim()">
-                {{ creatingLesson() ? 'Creating…' : 'Create lesson' }}
-              </button>
+              <div class="flex justify-end">
+                <button type="button" class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
+                  (click)="createLesson()" [disabled]="creatingLesson() || !lessonFormState.title.trim()">
+                  {{ creatingLesson() ? 'Creating…' : 'Create lesson' }}
+                </button>
+              </div>
             </div>
-          </div>
+            </div>
 
           <div *ngIf="isOwner() && activeTestSubjectId() === s.id" class="border border-amber-200 rounded-lg bg-amber-50 p-4 space-y-3">
             <div class="flex items-center justify-between">
@@ -249,7 +272,14 @@
                     <span *ngIf="l.isFree">Free preview</span>
                   </div>
                 </div>
-                <a [routerLink]="['/course', c.id, 'lessons', l.id]" class="text-xs uppercase tracking-wide px-3 py-1 rounded-md bg-gray-900 text-white">Open</a>
+                <div class="flex items-center gap-2">
+                  <a *ngIf="canAccessLesson(l)" [routerLink]="['/course', c.id, 'lessons', l.id]" class="text-xs uppercase tracking-wide px-3 py-1 rounded-md bg-gray-900 text-white">Open</a>
+                  <button *ngIf="!canAccessLesson(l)" type="button" class="text-xs uppercase tracking-wide px-3 py-1 rounded-md border border-dashed border-gray-400 text-gray-500 hover:border-blue-500 hover:text-blue-600" (click)="requireEnrollment('lesson')">
+                    Unlock via enrollment
+                  </button>
+                  <button *ngIf="isOwner()" type="button" class="text-xs text-amber-700 hover:text-amber-800" (click)="archiveLesson(l.id)">Archive</button>
+                  <button *ngIf="isOwner()" type="button" class="text-xs text-rose-700 hover:text-rose-800" (click)="deleteLesson(l.id)">Delete</button>
+                </div>
               </div>
               <div *ngIf="it.kind === 'test' && it.test as t" class="border-l-4 border-l-amber-500 bg-amber-50 rounded-md p-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -257,7 +287,12 @@
                     <div class="font-semibold flex items-center gap-2"><span class="material-symbols-outlined text-amber-600 text-base">quiz</span>{{ t.title }}</div>
                     <div class="text-xs text-amber-800" *ngIf="t.description">{{ t.description }}</div>
                   </div>
-                  <a [routerLink]="['/tests']" class="text-xs uppercase tracking-wide text-amber-700">Take test</a>
+                  <a *ngIf="canAccessTest(t)" [routerLink]="['/course', c.id, 'tests', t.id]" class="text-xs uppercase tracking-wide text-amber-700">Take test</a>
+                  <button *ngIf="!canAccessTest(t)" type="button" class="text-xs uppercase tracking-wide text-amber-700/60 hover:text-amber-700" (click)="requireEnrollment('test')">Locked</button>
+                  <div *ngIf="isOwner()" class="flex items-center gap-2">
+                    <button type="button" class="text-xs text-amber-700 hover:text-amber-800" (click)="archiveTest(t.id)">Archive</button>
+                    <button type="button" class="text-xs text-rose-700 hover:text-rose-800" (click)="deleteTest(t.id)">Delete</button>
+                  </div>
                 </div>
               </div>
             </ng-container>

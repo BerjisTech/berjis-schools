@@ -123,14 +123,14 @@
             <h1 class="text-2xl md:text-3xl font-semibold mt-1">Build beautiful learning experiences</h1>
             <p class="text-sm text-white/75 mt-3 max-w-xl">Launch new cohorts, track progress in real time, and keep your learning community connected across live, recorded, and simulated formats.</p>
             <div class="flex flex-wrap gap-3 mt-6">
-              <a *ngFor="let action of quickActions" [routerLink]="action.href" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-white/20 bg-white/10 backdrop-blur hover:bg-white/20">
+              <a *ngFor="let action of primaryActions" [routerLink]="action.href" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-white/20 bg-white/10 backdrop-blur hover:bg-white/20">
                 <span class="material-symbols-outlined text-base">{{ action.icon }}</span>
                 <span>{{ action.label }}</span>
               </a>
             </div>
           </div>
         </div>
-        <div class="grid gap-3">
+        <div *ngIf="isStaff; else studentSummary" class="grid gap-3">
           <div class="p-4 rounded-2xl bg-white shadow-sm border border-slate-100">
             <div class="text-xs uppercase tracking-wide text-slate-500">My schools</div>
             <div class="text-2xl font-semibold text-slate-900 mt-1">{{ mySchools.length || 0 }}</div>
@@ -143,32 +143,70 @@
           </div>
           <div class="p-4 rounded-2xl bg-white shadow-sm border border-slate-100">
             <div class="text-xs uppercase tracking-wide text-slate-500">Tutor status</div>
-            <div class="text-sm font-semibold text-slate-900 mt-1">{{ tutorStatus ? (tutorStatus | titlecase) : 'Not applied yet' }}</div>
-            <a routerLink="/tutors/become" class="text-xs text-blue-700 mt-2 inline-flex items-center gap-1">View tutor console<span class="material-symbols-outlined text-xs">north_east</span></a>
+            <div class="text-sm font-semibold text-slate-900 mt-1">{{ tutorStatusDisplay | titlecase }}</div>
+            <p class="text-xs text-slate-500 mt-1">{{ tutorActionHelper }}</p>
+            <a [routerLink]="tutorActionHref" class="text-xs text-blue-700 mt-2 inline-flex items-center gap-1">{{ tutorActionLabel }}<span class="material-symbols-outlined text-xs">north_east</span></a>
           </div>
         </div>
+        <ng-template #studentSummary>
+          <div class="grid gap-3">
+            <div class="p-4 rounded-2xl bg-white shadow-sm border border-slate-100">
+              <div class="text-xs uppercase tracking-wide text-slate-500">Enrolled courses</div>
+              <div class="text-2xl font-semibold text-slate-900 mt-1">{{ enrolledClasses.length }}</div>
+              <a routerLink="/classes" class="text-xs text-blue-700 mt-2 inline-flex items-center gap-1">View enrolled<span class="material-symbols-outlined text-xs">north_east</span></a>
+            </div>
+            <div class="p-4 rounded-2xl bg-white shadow-sm border border-slate-100">
+              <div class="text-xs uppercase tracking-wide text-slate-500">In-progress lessons</div>
+              <div class="text-2xl font-semibold text-slate-900 mt-1">{{ inProgressLessonsCount ?? 0 }}</div>
+              <a routerLink="/lessons" class="text-xs text-blue-700 mt-2 inline-flex items-center gap-1">Continue learning<span class="material-symbols-outlined text-xs">north_east</span></a>
+            </div>
+            <div class="p-4 rounded-2xl bg-white shadow-sm border border-slate-100">
+              <div class="text-xs uppercase tracking-wide text-slate-500">Opportunities</div>
+              <div class="text-sm font-semibold text-slate-900 mt-1">{{ tutorActionLabel }}</div>
+              <p class="text-xs text-slate-500 mt-1">{{ tutorActionHelper }}</p>
+              <a [routerLink]="tutorActionHref" class="text-xs text-blue-700 mt-2 inline-flex items-center gap-1">{{ tutorActionLabel }}<span class="material-symbols-outlined text-xs">north_east</span></a>
+            </div>
+          </div>
+        </ng-template>
       </div>
 
       <div class="grid lg:grid-cols-[2fr_1fr] gap-6 items-start">
-        <div class="rounded-3xl bg-white shadow-sm border border-slate-100 p-6 space-y-4">
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-slate-900">My schools</h2>
-            <a routerLink="/schools/staff" class="text-sm text-blue-700">Manage staff</a>
-          </div>
-          <div *ngIf="!mySchools.length" class="text-sm text-slate-500">You’re not managing any schools yet. <a routerLink="/schools/create" class="text-blue-700">Apply to create one.</a></div>
-          <div class="space-y-3" *ngIf="mySchools.length">
-            <div *ngFor="let school of mySchools" class="p-4 rounded-2xl border border-slate-100 bg-slate-50">
-              <div class="font-semibold text-slate-900">{{ school.name }}</div>
-              <div class="text-xs text-slate-500 mt-1">{{ school.description || 'No description yet.' }}</div>
+        <ng-container *ngIf="isStaff; else studentSchoolsSection">
+          <div class="rounded-3xl bg-white shadow-sm border border-slate-100 p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-slate-900">My schools</h2>
+              <a *ngIf="isAdmin" routerLink="/schools/staff" class="text-sm text-blue-700">Manage schools</a>
+            </div>
+            <div *ngIf="!mySchools.length" class="text-sm text-slate-500">You’re not managing any schools yet. <a routerLink="/schools/create" class="text-blue-700">Apply to create one.</a></div>
+            <div class="space-y-3" *ngIf="mySchools.length">
+              <div *ngFor="let school of mySchools" class="p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                <div class="font-semibold text-slate-900">{{ school.name }}</div>
+                <div class="text-xs text-slate-500 mt-1">{{ school.description || 'No description yet.' }}</div>
+              </div>
             </div>
           </div>
-        </div>
+        </ng-container>
+        <ng-template #studentSchoolsSection>
+          <div class="rounded-3xl bg-white shadow-sm border border-slate-100 p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-slate-900">My schools</h2>
+              <a routerLink="/schools/create" class="text-sm text-blue-700">Create a school</a>
+            </div>
+            <div *ngIf="!studentSchools.length" class="text-sm text-slate-500">You’re not enrolled in any schools yet. Explore classes to join a community.</div>
+            <div class="space-y-3" *ngIf="studentSchools.length">
+              <div *ngFor="let school of studentSchools" class="p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                <div class="font-semibold text-slate-900">{{ school.name }}</div>
+                <div class="text-xs text-slate-500 mt-1">{{ school.description || 'Curated learning paths' }}</div>
+              </div>
+            </div>
+          </div>
+        </ng-template>
         <div class="rounded-3xl bg-white shadow-sm border border-slate-100 p-6 space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold text-slate-900">Recent assessments</h2>
             <a routerLink="/tests" class="text-sm text-blue-700">View all</a>
           </div>
-          <div *ngIf="!recentTests.length" class="text-sm text-slate-500">No assessments yet. Draft one under any subject from a course.</div>
+          <div *ngIf="!recentTests.length" class="text-sm text-slate-500">No assessments yet. Browse the catalog to practise and unlock new quizzes.</div>
           <ul class="space-y-3" *ngIf="recentTests.length">
             <li *ngFor="let test of recentTests" class="p-3 rounded-xl border border-slate-100 bg-slate-50">
               <div class="font-medium text-slate-900">{{ test.title }}</div>

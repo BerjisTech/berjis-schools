@@ -1,5 +1,146 @@
-<div class="p-4">
-  <h2 class="mt-0 text-lg font-semibold">Lessons</h2>
-  <p>Coming soon: your in-progress and completed lessons.</p>
-</div>
+<div class="p-4 md:p-6 space-y-6">
+  <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div>
+      <h2 class="mt-0 text-xl font-semibold text-slate-900">Lessons</h2>
+      <p class="text-sm text-slate-500">Keep track of lessons across the courses you are part of.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a *ngIf="tutorEligible()" routerLink="/courses/mine" class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
+        <span class="material-symbols-outlined text-base text-white/90">playlist_add</span>
+        Plan lessons
+      </a>
+      <a routerLink="/classes" class="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:border-slate-300">
+        <span class="material-symbols-outlined text-base text-slate-500">travel_explore</span>
+        Explore courses
+      </a>
+    </div>
+  </div>
 
+  <div *ngIf="loading()" class="text-sm text-slate-500">Loading your lessons…</div>
+
+  <div *ngIf="!loading()">
+    <div *ngIf="error()" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      {{ error() }}
+    </div>
+
+    <ng-container *ngIf="!error()">
+      <ng-container *ngIf="hasLessons(); else emptyState">
+        <div class="space-y-5">
+          <div *ngFor="let entry of myCourses()" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div class="font-semibold text-slate-900">{{ entry.course.title || entry.course.name }}</div>
+                <div class="text-xs text-slate-500" *ngIf="entry.course.description; else noCourseDesc">{{ entry.course.description }}</div>
+                <ng-template #noCourseDesc>
+                  <div class="text-xs text-slate-400">No description provided yet.</div>
+                </ng-template>
+              </div>
+              <a [routerLink]="['/course', entry.course.id]" class="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <span class="material-symbols-outlined text-base text-indigo-500">open_in_new</span>
+                Open course
+              </a>
+            </div>
+
+            <div class="space-y-4 p-4">
+              <ng-container *ngFor="let subjectBlock of entry.subjects">
+                <div *ngIf="subjectBlock.lessons.length" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="flex flex-col gap-2 border-b border-slate-200 pb-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div class="font-medium text-slate-900">{{ subjectBlock.subject.title }}</div>
+                      <div class="text-xs text-slate-500" *ngIf="subjectBlock.subject.description; else noSubjectDesc">{{ subjectBlock.subject.description }}</div>
+                      <ng-template #noSubjectDesc>
+                        <div class="text-xs text-slate-400">No description yet.</div>
+                      </ng-template>
+                    </div>
+                    <span class="text-[11px] uppercase tracking-wide text-slate-500">{{ subjectBlock.subject.status ? (subjectBlock.subject.status | titlecase) : 'Active' }}</span>
+                  </div>
+                  <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                    <div *ngFor="let lesson of subjectBlock.lessons" class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <div class="font-medium text-slate-900">{{ lesson.title || lesson.name }}</div>
+                          <div class="text-xs text-slate-500">Type: {{ lesson.type | titlecase }}</div>
+                          <div class="text-xs text-slate-500" *ngIf="lesson.estimatedMinutes">
+                            Estimated {{ lesson.estimatedMinutes }} minute<span *ngIf="lesson.estimatedMinutes !== 1">s</span>
+                          </div>
+                          <div class="text-xs text-slate-500">
+                            Access: {{ lesson.isFree ? 'Free' : 'Enrolled only' }}
+                          </div>
+                        </div>
+                        <span class="text-[11px] uppercase tracking-wide text-slate-500">{{ lesson.status ? (lesson.status | titlecase) : 'Active' }}</span>
+                      </div>
+                      <div class="mt-3 flex gap-2">
+                        <a [routerLink]="['/course', entry.course.id, 'lessons', lesson.id]" class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
+                          <span class="material-symbols-outlined text-base text-white/90">play_arrow</span>
+                          Continue
+                        </a>
+                        <a [routerLink]="['/course', entry.course.id]" [queryParams]="{ highlightLesson: lesson.id }" class="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:border-slate-300">
+                          <span class="material-symbols-outlined text-base text-slate-500">visibility</span>
+                          View details
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </ng-container>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+
+      <ng-template #emptyState>
+        <div class="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+          <div class="text-lg font-semibold text-slate-900">You have no lessons yet</div>
+          <p class="mt-2 text-sm text-slate-500">
+            When you join a course or publish lessons, they will appear here for easy access.
+          </p>
+          <div class="mt-6 flex flex-wrap justify-center gap-3">
+            <a *ngIf="tutorEligible()" routerLink="/courses/mine" class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
+              <span class="material-symbols-outlined text-base text-white/90">playlist_add</span>
+              Create a lesson plan
+            </a>
+            <a routerLink="/classes" class="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:border-slate-300">
+              <span class="material-symbols-outlined text-base text-slate-500">travel_explore</span>
+              Explore courses
+            </a>
+          </div>
+        </div>
+      </ng-template>
+
+      <section class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-base font-semibold text-slate-900">Featured courses</h3>
+          <a routerLink="/classes" class="text-sm font-medium text-indigo-600 hover:text-indigo-700">Browse all</a>
+        </div>
+        <div *ngIf="exploreCourses().length; else noExplore" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <a *ngFor="let course of exploreCourses()" [routerLink]="['/course', course.id]" class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-indigo-200 hover:shadow-md">
+            <div class="font-medium text-slate-900">{{ course.title || course.name }}</div>
+            <div class="mt-1 text-xs text-slate-500" *ngIf="course.description; else noDesc">{{ course.description }}</div>
+            <ng-template #noDesc>
+              <div class="mt-1 text-xs text-slate-400">No description yet.</div>
+            </ng-template>
+            <div class="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+              <span class="inline-flex items-center gap-1">
+                <span class="material-symbols-outlined text-base text-indigo-500">inventory_2</span>
+                {{ course.subjectCount ?? 0 }} subjects
+              </span>
+              <span class="inline-flex items-center gap-1">
+                <span class="material-symbols-outlined text-base text-emerald-500">play_circle</span>
+                {{ course.lessonCount ?? 0 }} lessons
+              </span>
+              <span class="inline-flex items-center gap-1">
+                <span class="material-symbols-outlined text-base text-rose-500">quiz</span>
+                {{ course.testCount ?? 0 }} assessments
+              </span>
+            </div>
+          </a>
+        </div>
+        <ng-template #noExplore>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            There are no public courses to explore yet. Check back soon.
+          </div>
+        </ng-template>
+      </section>
+    </ng-container>
+  </div>
+</div>

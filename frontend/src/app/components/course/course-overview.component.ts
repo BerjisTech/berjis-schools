@@ -1,6 +1,6 @@
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { SchoolsService } from '../../services/schools.service';
 import { Course, Lesson, Subject, TestItem, TestPlacementStrategy } from '../../interfaces/course';
@@ -10,6 +10,7 @@ interface LessonFormState {
   title: string;
   type: 'text' | 'audio' | 'video' | 'live' | 'simulation';
   isFree: boolean;
+  description: string;
   textHtml: string;
   audioUrl: string;
   audioDuration: string;
@@ -36,6 +37,7 @@ const createLessonFormDefaults = (): LessonFormState => ({
   title: '',
   type: 'text',
   isFree: false,
+  description: '',
   textHtml: '',
   audioUrl: '',
   audioDuration: '',
@@ -77,6 +79,7 @@ export class CourseOverviewComponent implements OnInit {
   currentUserId = signal<string | null>(null);
 
   subjectTitle = signal('');
+  subjectDescription = signal('');
   creatingSubject = signal(false);
 
   activeLessonSubjectId = signal<string | null>(null);
@@ -102,10 +105,19 @@ export class CourseOverviewComponent implements OnInit {
     const c = this.course();
     const uid = this.currentUserId();
     if (!c || !uid) return false;
-    return (c.tutorUserId ?? '') === uid;
+    const tutorId = (c.tutorUserId ?? '').trim();
+    const userId = uid.trim();
+    if (!tutorId || !userId) return false;
+    return tutorId.toLowerCase() === userId.toLowerCase();
   });
 
-  constructor(private route: ActivatedRoute, private svc: SchoolsService) {}
+  enrolled = computed(() => {
+    if (this.isOwner()) return true;
+    const c = this.course();
+    return !!c?.isEnrolled;
+  });
+
+  constructor(private route: ActivatedRoute, private router: Router, private svc: SchoolsService) {}
 
   async ngOnInit() {
     this.courseId = this.route.snapshot.paramMap.get('id') ?? '';
@@ -221,12 +233,145 @@ export class CourseOverviewComponent implements OnInit {
     this.enrolling.set(true);
     try {
       await this.svc.enrollInCourse(`${c.id}`);
+      this.course.update(curr => (curr ? { ...curr, isEnrolled: true } : curr));
       this.toast.set({ kind: 'success', text: 'You are enrolled in this course.' });
     } catch (e: any) {
       this.toast.set({ kind: 'error', text: e?.message || 'Unable to enroll right now.' });
     } finally {
       this.enrolling.set(false);
     }
+  }
+
+  async archiveCourse() {
+    if (!this.courseId) return;
+    if (!confirm('Archive this course? Learners lose access until it is reactivated.')) return;
+    try {
+      const ok = await this.svc.updateCourse(this.courseId, { status: 'archived' });
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Course archived.' });
+      await this.router.navigate(['/courses/mine']);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive course.' });
+    }
+  }
+
+  async deleteCourse() {
+    if (!this.courseId) return;
+    if (!confirm('Delete this course? This soft delete hides it from everyone.')) return;
+    try {
+      const ok = await this.svc.updateCourse(this.courseId, { status: 'deleted' });
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Course deleted.' });
+      await this.router.navigate(['/courses/mine']);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete course.' });
+    }
+  }
+
+  canAccessLesson(lesson?: Lesson | null): boolean {
+    const course = this.course();
+    if (!lesson || !course) return false;
+    if (this.enrolled()) return true;
+    if (lesson.isFree) return true;
+    if (!course.isPaid && (course.visibility ?? 'public') === 'public') return true;
+    return false;
+  }
+
+  canAccessTest(test?: TestItem | null): boolean {
+    const course = this.course();
+    if (!test || !course) return false;
+    if (this.enrolled()) return true;
+    if ((test.visibility ?? 'public') === 'public') return true;
+    if (!course.isPaid && (course.visibility ?? 'public') === 'public') return true;
+    return false;
+  }
+
+  async archiveSubject(subjectId: string) {
+    if (!subjectId || !this.courseId) return;
+    if (!confirm('Archive this subject? It will no longer appear in the curriculum.')) return;
+    try {
+      const ok = await this.svc.updateSubjectStatus(subjectId, 'archived');
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Subject archived.' });
+      await this.loadData(this.courseId);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive subject.' });
+    }
+  }
+
+  async deleteSubject(subjectId: string) {
+    if (!subjectId || !this.courseId) return;
+    if (!confirm('Delete this subject? Lessons and assessments under it will be hidden.')) return;
+    try {
+      const ok = await this.svc.updateSubjectStatus(subjectId, 'deleted');
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Subject deleted.' });
+      await this.loadData(this.courseId);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete subject.' });
+    }
+  }
+
+  async archiveLesson(lessonId: string) {
+    if (!lessonId || !this.courseId) return;
+    if (!confirm('Archive this lesson? Learners will no longer see it.')) return;
+    try {
+      const ok = await this.svc.updateLessonStatus(lessonId, 'archived');
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Lesson archived.' });
+      await this.loadData(this.courseId);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive lesson.' });
+    }
+  }
+
+  async deleteLesson(lessonId: string) {
+    if (!lessonId || !this.courseId) return;
+    if (!confirm('Delete this lesson? This hides it while keeping a record for recovery.')) return;
+    try {
+      const ok = await this.svc.updateLessonStatus(lessonId, 'deleted');
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Lesson deleted.' });
+      await this.loadData(this.courseId);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete lesson.' });
+    }
+  }
+
+  async archiveTest(testId: string) {
+    if (!testId || !this.courseId) return;
+    if (!confirm('Archive this assessment? Learners will lose access until it is restored.')) return;
+    try {
+      const ok = await this.svc.updateTestStatus(testId, 'archived');
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Assessment archived.' });
+      await this.loadData(this.courseId);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive assessment.' });
+    }
+  }
+
+  async deleteTest(testId: string) {
+    if (!testId || !this.courseId) return;
+    if (!confirm('Delete this assessment? It will no longer show up for learners.')) return;
+    try {
+      const ok = await this.svc.updateTestStatus(testId, 'deleted');
+      if (!ok) throw new Error('Request failed');
+      this.toast.set({ kind: 'success', text: 'Assessment deleted.' });
+      await this.loadData(this.courseId);
+    } catch (e: any) {
+      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete assessment.' });
+    }
+  }
+
+  requireEnrollment(kind: 'lesson' | 'test') {
+    const course = this.course();
+    if (!course) return;
+    const isPaid = !!course.isPaid;
+    const message = kind === 'test'
+      ? (isPaid ? 'Enroll to unlock paid assessments.' : 'Enroll to access private assessments.')
+      : (isPaid ? 'Enroll to unlock paid course materials.' : 'Enroll to access private lessons.');
+    this.toast.set({ kind: 'error', text: message });
   }
 
   updatePlacement(p: TestPlacementStrategy) {
@@ -237,11 +382,13 @@ export class CourseOverviewComponent implements OnInit {
   async createSubject() {
     const c = this.course();
     const title = this.subjectTitle().trim();
+    const description = this.subjectDescription().trim();
     if (!c || !title) return;
     this.creatingSubject.set(true);
     try {
-      await this.svc.createSubject({ classId: `${c.id}`, title });
+      await this.svc.createSubject({ classId: `${c.id}`, title, description: description || undefined });
       this.subjectTitle.set('');
+      this.subjectDescription.set('');
       this.toast.set({ kind: 'success', text: 'Subject added.' });
       await this.loadData(this.courseId);
     } catch (e: any) {
@@ -320,32 +467,43 @@ export class CourseOverviewComponent implements OnInit {
   }
 
   private buildLessonContent(form: LessonFormState): any {
+    const base: any = {};
+    if (form.description.trim()) {
+      base.description = form.description.trim();
+    }
     switch (form.type) {
       case 'text':
-        return form.textHtml.trim() ? { html: form.textHtml.trim() } : null;
+        return {
+          ...(form.textHtml.trim() ? { html: form.textHtml.trim() } : {}),
+          ...base,
+        };
       case 'audio':
         return {
           url: form.audioUrl.trim() || undefined,
           durationSec: this.parseDuration(form.audioDuration),
+          ...base,
         };
       case 'video':
         return {
           url: form.videoUrl.trim() || undefined,
           durationSec: this.parseDuration(form.videoDuration),
+          ...base,
         };
       case 'live':
         return {
           mode: form.liveMode,
           startsAt: form.liveStartsAt || undefined,
           endsAt: form.liveEndsAt || undefined,
+          ...base,
         };
       case 'simulation':
         return {
           sandboxUrl: form.simulationUrl.trim() || undefined,
           instructions: form.simulationInstructions.trim() || undefined,
+          ...base,
         };
       default:
-        return null;
+        return Object.keys(base).length ? base : null;
     }
   }
 
