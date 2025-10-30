@@ -1,343 +1,597 @@
-<div class="p-5 max-w-3xl">
-  <h2 class="mt-0 text-lg font-semibold">Apply to Create a School</h2>
-  <div class="text-sm text-gray-600 mb-1">Multi-step application similar to tutor enrollment. Save drafts anytime.</div>
-  <div *ngIf="statusLine" class="mb-3" [ngClass]="{'text-blue-700': status==='pending', 'text-green-700': status==='approved', 'text-red-700': status==='rejected'}">{{ statusLine }}</div>
 
-  <div class="mb-4">
-    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-      <div class="h-full bg-blue-600" [style.width.%]="progressPct"></div>
+<section class="min-h-screen bg-slate-50 pb-16 pt-12">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+    <div class="grid gap-6 lg:grid-cols-[2fr,1fr]">
+      <div class="space-y-6">
+        <header class="rounded-3xl bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-500 p-6 text-white shadow-xl sm:p-8">
+          <p class="text-xs font-semibold uppercase tracking-[0.35em] text-white/70">School Onboarding</p>
+          <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Apply to create a school on Berjis</h2>
+          <p class="mt-3 max-w-2xl text-sm text-white/80 sm:text-base">
+            Walk through the checklist to share your school's story, compliance, and readiness. Drafts auto-save and you can return whenever you are ready.
+          </p>
+          <div *ngIf="statusLine" class="mt-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-1.5 text-sm font-medium backdrop-blur">
+            <span class="h-2.5 w-2.5 rounded-full"
+                  [ngClass]="{
+                    'bg-amber-300': status==='pending',
+                    'bg-emerald-300': status==='approved',
+                    'bg-rose-300': status==='rejected',
+                    'bg-white/70': !status
+                  }"></span>
+            {{ statusLine }}
+          </div>
+        </header>
+
+        <section class="rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+          <div class="space-y-6 p-6 sm:p-8">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Current step</p>
+                <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">{{ currentStep.label }}</h3>
+                <p class="mt-1 text-sm text-slate-500">{{ currentStep.description }}</p>
+              </div>
+              <div class="inline-flex items-center rounded-2xl bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 shadow-inner shadow-indigo-100">
+                {{ progressPct }}% complete
+              </div>
+            </div>
+            <div class="relative h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 transition-all" [style.width.%]="progressPct"></div>
+            </div>
+            <nav class="flex flex-wrap gap-3">
+              <button type="button"
+                      *ngFor="let def of stepDefinitions; let i = index"
+                      (click)="onStepClick(i)"
+                      class="group flex items-center gap-3 rounded-full border px-4 py-2 text-sm font-medium transition-all"
+                      [disabled]="!canGoTo(i)"
+                      [ngClass]="{
+                        'border-transparent bg-indigo-600 text-white shadow-lg shadow-indigo-100': i===step,
+                        'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600': i!==step && canGoTo(i),
+                        'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-60': !canGoTo(i)
+                      }">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full border text-sm font-semibold transition-all"
+                      [ngClass]="{
+                        'border-white/70 bg-white/20 text-white': i===step,
+                        'border-indigo-200 bg-indigo-50 text-indigo-600': isStepComplete(i),
+                        'border-slate-200 bg-white text-slate-400': !isStepComplete(i) && i!==step
+                      }">
+                  {{ i + 1 }}
+                </span>
+                <span>{{ def.label }}</span>
+              </button>
+            </nav>
+          </div>
+        </section>
+
+        <form class="space-y-6" (ngSubmit)="submit(false)">
+          <!-- 0. Basic School Information -->
+          <section *ngIf="step===0" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Basic school information</h3>
+              <p class="mt-1 text-sm text-slate-500">Tell us who you are, how to reach you, and where your school is registered.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(0) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Required: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Official school name
+                  <input [(ngModel)]="info.name" name="info_name" placeholder="e.g., Seed Academy"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Legal business name
+                  <input [(ngModel)]="info.legalName" name="info_legalName"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Business registration number
+                  <input [(ngModel)]="info.registrationNumber" name="info_registrationNumber"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <div>
+                  <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                    Country of registration
+                    <input [(ngModel)]="info.country" name="info_country" list="countryList" placeholder="Start typing a country"
+                           class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  </label>
+                  <datalist id="countryList">
+                    <option value="Kenya"></option>
+                    <option value="Uganda"></option>
+                    <option value="Tanzania"></option>
+                    <option value="Rwanda"></option>
+                    <option value="Nigeria"></option>
+                    <option value="South Africa"></option>
+                    <option value="United States"></option>
+                    <option value="United Kingdom"></option>
+                    <option value="Canada"></option>
+                    <option value="India"></option>
+                  </datalist>
+                </div>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Business type
+                  <input [(ngModel)]="info.businessType" name="info_businessType" placeholder="LLC, NGO, etc."
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  School website
+                  <input type="url" [(ngModel)]="info.website" name="info_website" placeholder="https://..."
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Social links (comma-separated)
+                  <input [(ngModel)]="info.social" name="info_social" placeholder="https://twitter..., https://linkedin..."
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Logo URL
+                  <input [(ngModel)]="info.logoUrl" name="info_logoUrl" placeholder="https://..."
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <div class="md:col-span-2">
+                  <span class="block text-sm font-medium text-slate-700 mb-2">Primary contact person</span>
+                  <div class="grid gap-3 md:grid-cols-3">
+                    <input [(ngModel)]="info.contact.name" name="info_contact_name" placeholder="Name"
+                           class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                    <input [(ngModel)]="info.contact.email" name="info_contact_email" type="email" placeholder="Email"
+                           class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                    <input type="tel" [(ngModel)]="info.contact.phone" name="info_contact_phone" placeholder="Phone"
+                           class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  </div>
+                </div>
+                <label class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Short description
+                  <textarea [(ngModel)]="info.description" name="info_description" rows="3" placeholder="Mission, specialization, subjects"
+                            class="w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+                </label>
+              </div>
+            </div>
+          </section>
+          <!-- 1. Verification Documents -->
+          <section *ngIf="step===1" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Verification documents</h3>
+              <p class="mt-1 text-sm text-slate-500">Upload essential compliance documents so we can confirm your organisation.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(1) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Required: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div *ngIf="uploadError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ uploadError }}</div>
+              <div class="grid gap-5 md:grid-cols-2">
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Business registration certificate (PDF)</p>
+                      <p class="text-xs text-slate-500">Official certificate or incorporation paperwork.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" accept="application/pdf" (change)="onVerifyFileChange('registrationCertUrl', $event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verify.registrationCertUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" [href]="urlFor('schools-api') + verify.registrationCertUrl" target="_blank">{{ verify.registrationCertUrl }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="verify.registrationCertUrl=''">Remove</button>
+                  </div>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Tax identification/PIN (PDF)</p>
+                      <p class="text-xs text-slate-500">Upload your tax certificate or PIN letter.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" accept="application/pdf" (change)="onVerifyFileChange('taxPinUrl', $event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verify.taxPinUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" [href]="urlFor('schools-api') + verify.taxPinUrl" target="_blank">{{ verify.taxPinUrl }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="verify.taxPinUrl=''">Remove</button>
+                  </div>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Proof of address (PDF)</p>
+                      <p class="text-xs text-slate-500">Utility bill or lease confirming your operating location.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" accept="application/pdf" (change)="onVerifyFileChange('proofAddressUrl', $event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verify.proofAddressUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" [href]="urlFor('schools-api') + verify.proofAddressUrl" target="_blank">{{ verify.proofAddressUrl }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="verify.proofAddressUrl=''">Remove</button>
+                  </div>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Founder/admin ID (PDF)</p>
+                      <p class="text-xs text-slate-500">Government-issued ID for the primary administrator.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" accept="application/pdf" (change)="onVerifyFileChange('founderIdUrl', $event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verify.founderIdUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" [href]="urlFor('schools-api') + verify.founderIdUrl" target="_blank">{{ verify.founderIdUrl }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="verify.founderIdUrl=''">Remove</button>
+                  </div>
+                </div>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Authorization letter (optional)
+                  <input [(ngModel)]="verify.authorizationLetterUrl" name="v_authorizationLetterUrl" placeholder="Link to authorization letter"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Accreditation (optional)
+                  <input [(ngModel)]="verify.accreditationUrl" name="v_accreditationUrl" placeholder="Link to accreditation documentation"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Insurance certificate (optional)
+                  <input [(ngModel)]="verify.insuranceUrl" name="v_insuranceUrl" placeholder="Link to insurance policy or certificate"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+              </div>
+            </div>
+          </section>
+          <!-- 2. Staff and Tutor Details -->
+          <section *ngIf="step===2" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Staff and tutor details</h3>
+              <p class="mt-1 text-sm text-slate-500">Invite tutors, outline administrative responsibilities, and describe your team setup.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(2) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Required: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="space-y-3">
+                <span class="block text-sm font-medium text-slate-700">Tutors / Instructors</span>
+                <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input [(ngModel)]="tutorSearchQuery" name="tutor_search2" (input)="searchUsers()" placeholder="Search user by name or email"
+                           class="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                    <button type="button" class="rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-100" (click)="searchUsers()">Search</button>
+                  </div>
+                  <div class="rounded-2xl border border-slate-200 bg-white/70 p-2 text-sm text-slate-600 max-h-40 overflow-auto" *ngIf="tutorResults.length">
+                    <div *ngFor="let u of tutorResults" class="flex items-center justify-between rounded-xl px-2 py-1 transition hover:bg-slate-100">
+                      <span>{{ u.displayName || u.userId }}</span>
+                      <button type="button" class="rounded-full border border-indigo-200 px-3 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-50" (click)="addTutorByUserId(u.userId)">Add</button>
+                    </div>
+                  </div>
+                  <div class="space-y-2" *ngIf="staff.tutors.length">
+                    <div *ngFor="let t of staff.tutors; let i = index" class="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                      <span>{{ t.userId }}</span>
+                      <button type="button" class="rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50" (click)="removeTutor(i)">Remove</button>
+                    </div>
+                  </div>
+                  <div *ngIf="!staff.tutors.length" class="text-xs text-slate-500">No tutors added yet.</div>
+                </div>
+              </div>
+              <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Admin/staff roles
+                <input [(ngModel)]="staff.adminRoles" name="staff_adminRoles" placeholder="Who manages students, billing, etc."
+                       class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+              </label>
+              <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Contract terms
+                <input [(ngModel)]="staff.contractTerms" name="staff_contractTerms" placeholder="Internal staff or freelance?"
+                       class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+              </label>
+            </div>
+          </section>
+          <!-- 3. Financial Information -->
+          <section *ngIf="step===3" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Financial information</h3>
+              <p class="mt-1 text-sm text-slate-500">Outline how your school handles payouts, banking, and revenue compliance.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(3) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Required: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Preferred payout method
+                  <select [(ngModel)]="finance.payoutMethod" name="finance_payoutMethod"
+                          class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                    <option value="">Select.</option>
+                    <option>Stripe</option>
+                    <option>Wise</option>
+                    <option>PayPal</option>
+                    <option>Bank</option>
+                  </select>
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Currency
+                  <input [(ngModel)]="finance.currency" name="finance_currency" placeholder="USD, KES, NGN, ..."
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Business bank account details
+                  <textarea [(ngModel)]="finance.bankDetails" name="finance_bankDetails" rows="3" placeholder="Account name, number, bank name, SWIFT/routing"
+                            class="w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Revenue model
+                  <select [(ngModel)]="finance.revenueModel" name="finance_revenueModel"
+                          class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                    <option value="">Select.</option>
+                    <option>Commission</option>
+                    <option>Subscription</option>
+                    <option>Hybrid</option>
+                  </select>
+                </label>
+                <div class="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Tax compliance documents (optional)</p>
+                      <p class="text-xs text-slate-500">PDF, max 2 MB each.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" accept="application/pdf" multiple (change)="onFinanceFileChange('taxDocsUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <div class="space-y-1 text-xs text-slate-600" *ngIf="finance.taxDocsUrl?.length">
+                    <div *ngFor="let u of finance.taxDocsUrl">
+                      <a class="font-medium text-indigo-600 hover:text-indigo-500" [href]="urlFor('schools-api') + u" target="_blank">{{ u }}</a>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Bank statements (optional)</p>
+                      <p class="text-xs text-slate-500">PDF, max 2 MB each.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" accept="application/pdf" multiple (change)="onFinanceFileChange('bankStatementUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <div class="space-y-1 text-xs text-slate-600" *ngIf="finance.bankStatementUrl?.length">
+                    <div *ngFor="let u of finance.bankStatementUrl">
+                      <a class="font-medium text-indigo-600 hover:text-indigo-500" [href]="urlFor('schools-api') + u" target="_blank">{{ u }}</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <!-- 4. Educational Scope and Curriculum -->
+          <section *ngIf="step===4" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Educational scope & curriculum</h3>
+              <p class="mt-1 text-sm text-slate-500">Share the learning focus, languages, and sample materials that represent your school.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(4) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Required: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Subjects / categories offered
+                  <input [(ngModel)]="curriculum.subjects" name="curr_subjects" placeholder="Science, STEM, Languages"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Student targets
+                  <input [(ngModel)]="curriculum.targets" name="curr_targets" placeholder="Primary, Secondary, Adult"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Instruction formats
+                  <input [(ngModel)]="curriculum.format" name="curr_format" placeholder="In-person, Hybrid, Virtual"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Languages of instruction
+                  <input [(ngModel)]="curriculum.languages" name="curr_languages" placeholder="English, Swahili, French"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Curriculum outline (optional)
+                  <input [(ngModel)]="curriculum.outlineUrl" name="curr_outlineUrl" placeholder="Link to syllabus or outline"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Sample lesson (optional)
+                  <input [(ngModel)]="curriculum.sampleUrl" name="curr_sampleUrl" placeholder="Link to sample lesson"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Demo / promotional video (optional)
+                  <input [(ngModel)]="curriculum.demoUrl" name="curr_demoUrl" placeholder="Link to demo video"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+              </div>
+            </div>
+          </section>
+          <!-- 5. Agreements -->
+          <section *ngIf="step===5" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Policies & agreements</h3>
+              <p class="mt-1 text-sm text-slate-500">Confirm the platform policies and quality guarantees your school will uphold.</p>
+            </div>
+            <div class="space-y-4 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(5) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Required: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-3 md:grid-cols-2">
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.partnership" name="agr_partnership" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Partnership & collaboration agreement</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.privacy" name="agr_privacy" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Privacy & data protection compliance</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.revenueSplit" name="agr_revenueSplit" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Revenue sharing terms</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.codeOfConduct" name="agr_codeOfConduct" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Code of Conduct adherence</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.quality" name="agr_quality" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Quality assurance policy</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.antiFraud" name="agr_antiFraud" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Anti-plagiarism & anti-fraud declaration</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="agreements.refund" name="agr_refund" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>Student refund policy</span>
+                </label>
+              </div>
+            </div>
+          </section>
+          <!-- 6. Optional Extras -->
+          <section *ngIf="step===6" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Optional extras</h3>
+              <p class="mt-1 text-sm text-slate-500">Add branding details, testimonials, or integrations that help us prepare your launch.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Marketing media URLs
+                  <input [(ngModel)]="extras.mediaUrls" name="extras_mediaUrls" placeholder="Comma-separated links"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Testimonials
+                  <input [(ngModel)]="extras.testimonials" name="extras_testimonials" placeholder="Short quotes or links"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Brand banner URL
+                  <input [(ngModel)]="extras.bannerUrl" name="extras_bannerUrl" placeholder="https://..."
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Preferred subdomain
+                  <input [(ngModel)]="extras.subdomain" name="extras_subdomain" placeholder="e.g., seed"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Theme color
+                  <input [(ngModel)]="extras.themeColor" name="extras_themeColor" placeholder="#0055cc"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Integrations (LMS/CRM)
+                  <input [(ngModel)]="extras.integrations" name="extras_integrations" placeholder="Moodle, HubSpot"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Partnership type
+                  <select [(ngModel)]="extras.partnershipType" name="extras_partnershipType"
+                          class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                    <option value="">Select.</option>
+                    <option>Independent</option>
+                    <option>Corporate Training</option>
+                    <option>Community School</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </section>
+          <!-- 7. Review & Submit -->
+          <section *ngIf="step===7" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Review & submit</h3>
+              <p class="mt-1 text-sm text-slate-500">Double-check your application details before submitting to our review team.</p>
+            </div>
+            <div class="space-y-5 px-6 py-6 sm:px-8">
+              <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Progress: {{ progressPct }}%. We validate again on submission, so drafts are perfectly fine.
+              </div>
+              <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700" *ngIf="missingRequired().length">
+                Missing: {{ missingRequired().join(', ') }}
+              </div>
+              <div class="space-y-3 text-sm text-slate-600">
+                <div>
+                  <p class="font-medium text-slate-900">Uploaded documents</p>
+                  <ul class="mt-2 list-disc space-y-1 pl-5 text-xs">
+                    <li *ngIf="verify.registrationCertUrl"><a [href]="urlFor('schools-api') + verify.registrationCertUrl" target="_blank">Registration certificate</a></li>
+                    <li *ngIf="verify.taxPinUrl"><a [href]="urlFor('schools-api') + verify.taxPinUrl" target="_blank">Tax PIN / compliance</a></li>
+                    <li *ngIf="verify.proofAddressUrl"><a [href]="urlFor('schools-api') + verify.proofAddressUrl" target="_blank">Proof of address</a></li>
+                    <li *ngIf="verify.founderIdUrl"><a [href]="urlFor('schools-api') + verify.founderIdUrl" target="_blank">Founder/admin ID</a></li>
+                    <li *ngFor="let u of (finance.taxDocsUrl || [])"><a [href]="urlFor('schools-api') + u" target="_blank">Tax doc</a></li>
+                    <li *ngFor="let u of (finance.bankStatementUrl || [])"><a [href]="urlFor('schools-api') + u" target="_blank">Bank statement</a></li>
+                  </ul>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-900">Application snapshot</p>
+                  <pre class="mt-2 max-h-64 overflow-auto rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">{{ previewJson }}</pre>
+                </div>
+              </div>
+            </div>
+          </section>
+          <div class="flex flex-wrap items-center gap-3 rounded-3xl bg-white px-6 py-5 shadow-sm ring-1 ring-slate-100/80 sm:px-8">
+            <div class="flex flex-wrap gap-3">
+              <button type="button" (click)="back()" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50" [disabled]="step===0">Back</button>
+              <button type="button" (click)="next()" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50" [disabled]="!validForStep(step)">Next</button>
+              <button type="button" (click)="saveDraft()" class="rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50" [disabled]="saving">Save draft</button>
+            </div>
+            <button type="submit" class="ml-auto rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60" [disabled]="saving || step!==7 || missingRequired().length>0">{{ saving ? 'Submitting...' : 'Submit application' }}</button>
+          </div>
+          <div *ngIf="message" class="rounded-2xl border px-4 py-3 text-sm"
+               [ngClass]="{'border-emerald-200 bg-emerald-50 text-emerald-700': success, 'border-rose-200 bg-rose-50 text-rose-700': !success}">
+            {{ message }}
+          </div>
+        </form>
+      </div>
+      <aside class="space-y-6">
+        <div class="rounded-3xl bg-white/80 p-6 shadow-sm ring-1 ring-slate-100/80 backdrop-blur-lg sm:p-7">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">What's ahead</h3>
+          <ul class="mt-4 space-y-4 text-slate-600">
+            <li *ngFor="let def of stepDefinitions; let i = index" class="flex gap-3">
+              <div class="flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold"
+                   [ngClass]="{
+                     'border-indigo-500 bg-indigo-500 text-white': i===step,
+                     'border-indigo-200 bg-indigo-50 text-indigo-600': isStepComplete(i),
+                     'border-slate-200 bg-white text-slate-400': !isStepComplete(i) && i!==step
+                   }">
+                {{ i + 1 }}
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-semibold text-slate-800">{{ def.label }}</p>
+                <p class="text-xs text-slate-500">{{ def.description }}</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <div class="rounded-3xl border border-indigo-100 bg-indigo-50/60 p-6 text-sm text-indigo-900 shadow-sm sm:p-7">
+          <p class="text-base font-semibold">Need a hand?</p>
+          <p class="mt-2">Use the in-app support chat or leave a note in your application. Our team can review drafts and answer questions.</p>
+        </div>
+      </aside>
     </div>
-    <div class="mt-1 text-xs text-gray-600">Progress: {{ progressPct }}%</div>
   </div>
+</section>
 
-  <nav class="flex flex-wrap gap-2 mb-4">
-    <button type="button" *ngFor="let def of stepDefinitions; let i = index"
-            (click)="onStepClick(i)"
-            class="px-3 py-1 rounded border text-sm"
-            [class.opacity-50]="!canGoTo(i)" [disabled]="!canGoTo(i)"
-            [class.bg-blue-600]="i===step" [class.text-white]="i===step" [class.border-blue-600]="i===step">{{ def.label }}</button>
-  </nav>
 
-  <form class="space-y-6" (ngSubmit)="submit(false)">
-    <!-- 0. Basic School Information -->
-    <section class="space-y-3" *ngIf="step===0">
-      <h3 class="font-semibold">Basic School Information</h3>
-      <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(0).length">Required: {{ fieldsMissingForStep(0).join(', ') }}</div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div>
-          <label class="block text-sm mb-1">Official school name</label>
-          <input [(ngModel)]="info.name" name="info_name" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="e.g., Seed Academy" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Legal business name</label>
-          <input [(ngModel)]="info.legalName" name="info_legalName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Business registration number</label>
-          <input [(ngModel)]="info.registrationNumber" name="info_registrationNumber" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Country of registration</label>
-          <input [(ngModel)]="info.country" name="info_country" class="w-full border border-gray-300 rounded-md px-3 py-2" list="countryList" placeholder="Start typing a country" />
-          <datalist id="countryList">
-            <option value="Kenya"></option>
-            <option value="Uganda"></option>
-            <option value="Tanzania"></option>
-            <option value="Rwanda"></option>
-            <option value="Nigeria"></option>
-            <option value="South Africa"></option>
-            <option value="United States"></option>
-            <option value="United Kingdom"></option>
-            <option value="Canada"></option>
-            <option value="India"></option>
-          </datalist>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Business type</label>
-          <input [(ngModel)]="info.businessType" name="info_businessType" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="LLC, NGO, etc." />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">School website</label>
-          <input type="url" [(ngModel)]="info.website" name="info_website" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="https://..." />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Social links (comma-separated)</label>
-          <input [(ngModel)]="info.social" name="info_social" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="https://twitter..., https://linkedin..." />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Logo URL</label>
-          <input [(ngModel)]="info.logoUrl" name="info_logoUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="https://..." />
-        </div>
-        <div class="md:col-span-2">
-          <label class="block text-sm mb-1">Primary contact person</label>
-          <div class="grid gap-3 md:grid-cols-3">
-            <input [(ngModel)]="info.contact.name" name="info_contact_name" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Name" />
-            <input [(ngModel)]="info.contact.email" name="info_contact_email" type="email" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Email" />
-            <input type="tel" [(ngModel)]="info.contact.phone" name="info_contact_phone" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Phone" />
-          </div>
-        </div>
-        <div class="md:col-span-2">
-          <label class="block text-sm mb-1">Short description</label>
-          <textarea [(ngModel)]="info.description" name="info_description" rows="3" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Mission, specialization, subjects"></textarea>
-        </div>
-      </div>
-    </section>
 
-    <!-- 1. Verification Documents -->
-    <section class="space-y-3" *ngIf="step===1">
-      <h3 class="font-semibold">Verification Documents</h3>
-      <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(1).length">Required: {{ fieldsMissingForStep(1).join(', ') }}</div>
-      <div class="text-xs text-red-700" *ngIf="uploadError">{{ uploadError }}</div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div>
-          <label class="block text-sm mb-1">Business registration certificate (PDF)</label>
-          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('registrationCertUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-          <div class="text-xs mt-1" *ngIf="verify.registrationCertUrl">Selected: <a [href]="urlFor('schools-api') + verify.registrationCertUrl" target="_blank">{{ verify.registrationCertUrl }}</a></div>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Tax identification/PIN (PDF)</label>
-          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('taxPinUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-          <div class="text-xs mt-1" *ngIf="verify.taxPinUrl">Selected: <a [href]="urlFor('schools-api') + verify.taxPinUrl" target="_blank">{{ verify.taxPinUrl }}</a></div>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Proof of address (PDF)</label>
-          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('proofAddressUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-          <div class="text-xs mt-1" *ngIf="verify.proofAddressUrl">Selected: <a [href]="urlFor('schools-api') + verify.proofAddressUrl" target="_blank">{{ verify.proofAddressUrl }}</a></div>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Founder/admin ID (PDF)</label>
-          <input type="file" accept="application/pdf" (change)="onVerifyFileChange('founderIdUrl', $event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-          <div class="text-xs mt-1" *ngIf="verify.founderIdUrl">Selected: <a [href]="urlFor('schools-api') + verify.founderIdUrl" target="_blank">{{ verify.founderIdUrl }}</a></div>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Authorization letter (optional)</label>
-          <input [(ngModel)]="verify.authorizationLetterUrl" name="v_authorizationLetterUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Accreditation (optional)</label>
-          <input [(ngModel)]="verify.accreditationUrl" name="v_accreditationUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Insurance certificate (optional)</label>
-          <input [(ngModel)]="verify.insuranceUrl" name="v_insuranceUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-      </div>
-    </section>
-
-    <!-- 2. Staff and Tutor Details -->
-    <section class="space-y-3" *ngIf="step===2">
-      <h3 class="font-semibold">Staff and Tutor Details</h3>
-      <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(2).length">Required: {{ fieldsMissingForStep(2).join(', ') }}</div>
-      <div>
-        <label class="block text-sm mb-1">Tutors / Instructors</label>
-        <div class="space-y-3">
-          <div class="flex items-center gap-2">
-            <input [(ngModel)]="tutorSearchQuery" name="tutor_search2" class="border rounded px-3 py-2 flex-1" placeholder="Search user by name or email" (input)="searchUsers()" />
-            <button type="button" class="px-2 py-1 rounded border" (click)="searchUsers()">Search</button>
-          </div>
-          <div class="border rounded p-2 max-h-40 overflow-auto" *ngIf="tutorResults.length">
-            <div *ngFor="let u of tutorResults" class="flex items-center justify-between py-1">
-              <div class="text-sm">{{ u.displayName || u.userId }}</div>
-              <button type="button" class="px-2 py-1 rounded border" (click)="addTutorByUserId(u.userId)">Add</button>
-            </div>
-          </div>
-          <div class="space-y-1">
-            <div *ngFor="let t of staff.tutors; let i = index" class="flex items-center justify-between">
-              <div class="text-sm">{{ t.userId }}</div>
-              <button type="button" (click)="removeTutor(i)" class="px-2 py-1 border rounded">Remove</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div>
-        <label class="block text-sm mb-1">Admin/staff roles</label>
-        <input [(ngModel)]="staff.adminRoles" name="staff_adminRoles" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Who manages students, billing, etc." />
-      </div>
-      <div>
-        <label class="block text-sm mb-1">Contract terms</label>
-        <input [(ngModel)]="staff.contractTerms" name="staff_contractTerms" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Internal staff or freelance?" />
-      </div>
-    </section>
-
-    <!-- 3. Financial Information -->
-    <section class="space-y-3" *ngIf="step===3">
-      <h3 class="font-semibold">Financial Information</h3>
-      <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(3).length">Required: {{ fieldsMissingForStep(3).join(', ') }}</div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div>
-          <label class="block text-sm mb-1">Preferred payout method</label>
-          <select [(ngModel)]="finance.payoutMethod" name="finance_payoutMethod" class="w-full border border-gray-300 rounded-md px-3 py-2">
-            <option value="">Select…</option>
-            <option>Stripe</option>
-            <option>Wise</option>
-            <option>PayPal</option>
-            <option>Bank</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Currency</label>
-          <input [(ngModel)]="finance.currency" name="finance_currency" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="USD, KES, NGN, ..." />
-        </div>
-        <div class="md:col-span-2">
-          <label class="block text-sm mb-1">Business bank account details</label>
-          <textarea [(ngModel)]="finance.bankDetails" name="finance_bankDetails" rows="3" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Account name, number, bank name, SWIFT/routing"></textarea>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Revenue model</label>
-          <select [(ngModel)]="finance.revenueModel" name="finance_revenueModel" class="w-full border border-gray-300 rounded-md px-3 py-2">
-            <option value="">Select…</option>
-            <option>Commission</option>
-            <option>Subscription</option>
-            <option>Hybrid</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Tax compliance documents (PDF, optional, max 2 MB each)</label>
-          <input type="file" accept="application/pdf" multiple (change)="onFinanceFileChange('taxDocsUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-          <div class="text-xs mt-1 space-y-1" *ngIf="finance.taxDocsUrl?.length">
-            <div *ngFor="let u of finance.taxDocsUrl">Selected:
-              <a [href]="urlFor('schools-api') + u" target="_blank">{{ u }}</a>
-            </div>
-          </div>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Bank statements (PDF, optional, multiple, max 2 MB each)</label>
-          <input type="file" accept="application/pdf" multiple (change)="onFinanceFileChange('bankStatementUrl',$event)" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-          <div class="text-xs mt-1 space-y-1" *ngIf="finance.bankStatementUrl?.length">
-            <div *ngFor="let u of finance.bankStatementUrl">Selected:
-              <a [href]="urlFor('schools-api') + u" target="_blank">{{ u }}</a>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 4. Educational Scope and Curriculum -->
-    <section class="space-y-3" *ngIf="step===4">
-      <h3 class="font-semibold">Educational Scope and Curriculum</h3>
-      <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(4).length">Required: {{ fieldsMissingForStep(4).join(', ') }}</div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div>
-          <label class="block text-sm mb-1">Subjects / categories offered</label>
-          <input [(ngModel)]="curriculum.subjects" name="curr_subjects" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="comma-separated" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Target learners</label>
-          <input [(ngModel)]="curriculum.targets" name="curr_targets" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="age groups, proficiency levels" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Teaching format</label>
-          <input [(ngModel)]="curriculum.format" name="curr_format" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="live, recorded, hybrid, mentorship" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Languages of instruction</label>
-          <input [(ngModel)]="curriculum.languages" name="curr_languages" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div class="md:col-span-2">
-          <label class="block text-sm mb-1">Curriculum outline or course catalog (URL, optional)</label>
-          <input [(ngModel)]="curriculum.outlineUrl" name="curr_outlineUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Sample course material / syllabus (URL, optional)</label>
-          <input [(ngModel)]="curriculum.sampleUrl" name="curr_sampleUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Demo/promotional video (URL)</label>
-          <input [(ngModel)]="curriculum.demoUrl" name="curr_demoUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-      </div>
-    </section>
-
-    <!-- 5. Policies and Legal Agreements -->
-    <section class="space-y-3" *ngIf="step===5">
-      <h3 class="font-semibold">Policies and Legal Agreements</h3>
-      <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(5).length">Required: {{ fieldsMissingForStep(5).join(', ') }}</div>
-      <div class="grid gap-2 md:grid-cols-2">
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.partnership" name="agr_partnership" /> School Partnership Agreement</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.privacy" name="agr_privacy" /> Data Protection & Privacy Policy</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.revenueSplit" name="agr_revenueSplit" /> Revenue Split / Commission Terms</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.codeOfConduct" name="agr_codeOfConduct" /> Code of Conduct for Tutors and Admins</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.quality" name="agr_quality" /> Quality Assurance Policy</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.antiFraud" name="agr_antiFraud" /> Anti-Plagiarism & Anti-Fraud Declaration</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="agreements.refund" name="agr_refund" /> Student Refund Policy</label>
-      </div>
-    </section>
-
-    <!-- 6. Optional Extras -->
-    <section class="space-y-3" *ngIf="step===6">
-      <h3 class="font-semibold">Optional Extras</h3>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div>
-          <label class="block text-sm mb-1">Marketing media URLs (comma-separated)</label>
-          <input [(ngModel)]="extras.mediaUrls" name="extras_mediaUrls" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Testimonials</label>
-          <input [(ngModel)]="extras.testimonials" name="extras_testimonials" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="short quotes or links" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Brand banner (URL)</label>
-          <input [(ngModel)]="extras.bannerUrl" name="extras_bannerUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Preferred subdomain</label>
-          <input [(ngModel)]="extras.subdomain" name="extras_subdomain" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="e.g., seed" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Theme color</label>
-          <input [(ngModel)]="extras.themeColor" name="extras_themeColor" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="#0055cc" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Integrations (LMS/CRM)</label>
-          <input [(ngModel)]="extras.integrations" name="extras_integrations" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Moodle, HubSpot" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Partnership type</label>
-          <select [(ngModel)]="extras.partnershipType" name="extras_partnershipType" class="w-full border border-gray-300 rounded-md px-3 py-2">
-            <option value="">Select…</option>
-            <option>Independent</option>
-            <option>Corporate Training</option>
-            <option>Community School</option>
-          </select>
-        </div>
-      </div>
-    </section>
-
-    <!-- 7. Review & Submit -->
-    <section class="space-y-3" *ngIf="step===7">
-      <h3 class="font-semibold">Review & Submit</h3>
-      <div class="text-sm text-gray-600">Complete all required steps to enable submission.</div>
-      <div class="text-xs text-red-700" *ngIf="missingRequired().length">Missing: {{ missingRequired().join(', ') }}</div>
-      <div class="space-y-2 text-sm">
-        <div class="font-semibold">Uploaded Documents</div>
-        <div>
-          <div class="font-medium">Verification</div>
-          <ul class="list-disc pl-5">
-            <li *ngIf="verify.registrationCertUrl"><a [href]="urlFor('schools-api') + verify.registrationCertUrl" target="_blank">Registration certificate</a></li>
-            <li *ngIf="verify.taxPinUrl"><a [href]="urlFor('schools-api') + verify.taxPinUrl" target="_blank">Tax PIN / compliance</a></li>
-            <li *ngIf="verify.proofAddressUrl"><a [href]="urlFor('schools-api') + verify.proofAddressUrl" target="_blank">Proof of address</a></li>
-            <li *ngIf="verify.founderIdUrl"><a [href]="urlFor('schools-api') + verify.founderIdUrl" target="_blank">Founder/admin ID</a></li>
-          </ul>
-        </div>
-        <div>
-          <div class="font-medium">Finance</div>
-          <ul class="list-disc pl-5">
-            <li *ngFor="let u of (finance.taxDocsUrl || [])"><a [href]="urlFor('schools-api') + u" target="_blank">Tax doc</a></li>
-            <li *ngFor="let u of (finance.bankStatementUrl || [])"><a [href]="urlFor('schools-api') + u" target="_blank">Bank statement</a></li>
-          </ul>
-        </div>
-      </div>
-      <div>
-        <pre class="text-xs bg-gray-50 border rounded p-3 overflow-auto max-h-64">{{ previewJson }}</pre>
-      </div>
-    </section>
-
-    <div class="flex items-center gap-3 pt-2">
-      <button type="button" (click)="back()" class="px-4 py-2 rounded-md border" [disabled]="step===0">Back</button>
-      <button type="button" (click)="next(); saveDraft()" class="px-4 py-2 rounded-md border" [disabled]="!validForStep(step)">Next</button>
-      <button type="button" (click)="saveDraft()" class="px-4 py-2 rounded-md border">Save Draft</button>
-      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md" [disabled]="saving || step!==7 || missingRequired().length>0">{{ saving ? 'Submitting…' : 'Submit Application' }}</button>
-      <div *ngIf="message" class="text-sm" [class.text-green-700]="success" [class.text-red-700]="!success">{{ message }}</div>
-    </div>
-  </form>
-</div>

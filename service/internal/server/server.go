@@ -73,11 +73,29 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Missing file"})
 		}
-		// Type check PDF
-		if !strings.EqualFold(filepath.Ext(fh.Filename), ".pdf") {
-			if ct := fh.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/pdf") {
-				return c.Status(400).JSON(fiber.Map{"success": false, "message": "Only PDF uploads are allowed"})
-			}
+		// Basic type guard
+		ct := strings.ToLower(strings.TrimSpace(fh.Header.Get("Content-Type")))
+		ext := strings.ToLower(filepath.Ext(fh.Filename))
+		allowedExts := map[string]string{
+			".pdf":  "application/pdf",
+			".png":  "image/",
+			".jpg":  "image/",
+			".jpeg": "image/",
+			".webp": "image/",
+			".heic": "image/",
+			".heif": "image/",
+			".mp4":  "video/",
+			".mov":  "video/",
+			".m4v":  "video/",
+			".webm": "video/",
+		}
+		allowedDisplay := "PDF, PNG, JPG, JPEG, WEBP, HEIC/HEIF, MP4, MOV, M4V, WebM"
+		pattern, ok := allowedExts[ext]
+		if !ok {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Unsupported file type. Allowed: " + allowedDisplay})
+		}
+		if ct != "" && ct != "application/octet-stream" && !strings.HasPrefix(ct, pattern) {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "File content type not allowed. Allowed: " + allowedDisplay})
 		}
 		// Size limit
 		if fh.Size > 0 && fh.Size > maxBytes {
@@ -124,7 +142,7 @@ func New(opts Options) *fiber.App {
 		if err := os.MkdirAll(subdir, 0o755); err != nil {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
-		name := uuid.New().String() + strings.ToLower(filepath.Ext(fh.Filename))
+		name := uuid.New().String() + ext
 		dest := filepath.Join(subdir, name)
 		if err := c.SaveFile(fh, dest); err != nil {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})

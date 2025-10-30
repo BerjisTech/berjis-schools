@@ -1,195 +1,529 @@
-    <div class="p-5 max-w-xl">
-      <h2 class="mt-0 text-lg font-semibold">Apply to Become a Private Tutor</h2>
-      <div class="text-sm text-gray-600 mb-4">You can apply even if you already teach at a school.</div>
 
-      <div *ngIf="statusLine" class="mb-3" [ngClass]="{'text-blue-700': status==='pending', 'text-green-700': status==='approved', 'text-red-700': status==='rejected'}">{{ statusLine }}</div>
-
-      <div class="mb-4">
-        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div class="h-full bg-blue-600" [style.width.%]="progressPct"></div>
-        </div>
-        <div class="mt-1 text-xs text-gray-600">Progress: {{ progressPct }}%</div>
+<section class="min-h-screen bg-slate-50 pb-16 pt-12">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+    <div class="grid gap-6 lg:grid-cols-[2fr,1fr]">
+      <div class="space-y-6">
+        <header class="rounded-3xl bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-500 p-6 text-white shadow-xl sm:p-8">
+          <p class="text-xs font-semibold uppercase tracking-[0.35em] text-white/70">Tutor Onboarding</p>
+          <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Apply to become a private tutor</h2>
+          <p class="mt-3 max-w-2xl text-sm text-white/80 sm:text-base">
+            Follow the guided steps, save drafts any time, and come back when you are ready. Once everything looks good, submit for a quick review by our team.
+          </p>
+          <div *ngIf="statusLine" class="mt-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-1.5 text-sm font-medium backdrop-blur">
+            <span class="h-2.5 w-2.5 rounded-full"
+                  [ngClass]="{
+                    'bg-amber-300': status==='pending',
+                    'bg-emerald-300': status==='approved',
+                    'bg-rose-300': status==='rejected',
+                    'bg-white/70': !status
+                  }"></span>
+            {{ statusLine }}
+          </div>
+        </header>
+        <section class="rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+          <div class="space-y-6 p-6 sm:p-8">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Current step</p>
+                <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">{{ currentStep.label }}</h3>
+                <p class="mt-1 text-sm text-slate-500">{{ currentStep.description }}</p>
+              </div>
+              <div class="inline-flex items-center rounded-2xl bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 shadow-inner shadow-indigo-100">
+                {{ progressPct }}% complete
+              </div>
+            </div>
+            <div class="relative h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 transition-all" [style.width.%]="progressPct"></div>
+            </div>
+            <nav class="flex flex-wrap gap-3">
+              <button type="button"
+                      *ngFor="let def of steps; let i = index"
+                      (click)="goToStep(i)"
+                      class="group flex items-center gap-3 rounded-full border px-4 py-2 text-sm font-medium transition-all"
+                      [disabled]="!canGoTo(i)"
+                      [ngClass]="{
+                        'border-transparent bg-indigo-600 text-white shadow-lg shadow-indigo-100': i===step,
+                        'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600': i!==step && canGoTo(i),
+                        'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-60': !canGoTo(i)
+                      }">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full border text-sm font-semibold transition-all"
+                      [ngClass]="{
+                        'border-white/70 bg-white/20 text-white': i===step,
+                        'border-indigo-200 bg-indigo-50 text-indigo-600': isStepComplete(i),
+                        'border-slate-200 bg-white text-slate-400': !isStepComplete(i) && i!==step
+                      }">
+                  {{ i + 1 }}
+                </span>
+                <span>{{ def.label }}</span>
+              </button>
+            </nav>
+          </div>
+        </section>
+        <form class="space-y-6" (ngSubmit)="apply(false)">
+          <section *ngIf="step===0" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Personal info</h3>
+              <p class="mt-1 text-sm text-slate-500">Help families know who you are and how to reach you.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(0) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Please complete: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Full legal name
+                  <input [(ngModel)]="profile.legalName" name="legalName" autocomplete="name" placeholder="As shown on your ID"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Display name
+                  <input [(ngModel)]="profile.displayName" name="displayName" placeholder="How learners will see you"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Email
+                  <input [(ngModel)]="profile.email" name="email" type="email" autocomplete="email" placeholder="you@example.com"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Phone
+                  <input [(ngModel)]="profile.phone" name="phone" autocomplete="tel" placeholder="+1 555 123 4567"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <div class="space-y-2">
+                  <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                    Country
+                    <select [(ngModel)]="selectedCountryCode" (ngModelChange)="onCountrySelect($event)" name="countrySelect"
+                            class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                      <option value="">Select your country</option>
+                      <option *ngFor="let c of countries" [value]="c.code">{{ c.name }}</option>
+                    </select>
+                  </label>
+                  <input *ngIf="useManualCountry" type="text" [value]="manualCountry" (input)="onManualCountryChange($event.target.value)" name="countryManual" placeholder="Enter your country"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </div>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Languages
+                  <input [(ngModel)]="profile.languages" name="languages" placeholder="English, Swahili, French"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  <span class="text-xs font-normal text-slate-400">Comma separate multiple languages.</span>
+                </label>
+                <div class="md:col-span-2 space-y-2">
+                  <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                    Time zone
+                    <select [(ngModel)]="selectedTimezone" (ngModelChange)="onTimezoneSelect($event)" name="timezoneSelect"
+                            class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                      <option value="">Select your time zone</option>
+                      <option *ngFor="let tz of timezones" [value]="tz">{{ tz }}</option>
+                      <option value="__manual">Other / Not listed</option>
+                    </select>
+                  </label>
+                  <input *ngIf="useManualTimezone || selectedTimezone === '__manual'" type="text" [value]="manualTimezone" (input)="onManualTimezoneChange($event.target.value)" name="timezoneManual" placeholder="e.g., Africa/Nairobi"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </div>
+                <label class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Short bio / About me
+                  <textarea [(ngModel)]="bio" name="bio" rows="4" placeholder="Summarise your teaching style, subjects, and experience."
+                            class="w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+                </label>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===1" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Identity verification</h3>
+              <p class="mt-1 text-sm text-slate-500">Securely upload documents so we can verify your identity.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(1) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Please complete: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Government ID type
+                  <select [(ngModel)]="verification.govIdType" name="govIdType"
+                          class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                    <option value="">Select ID type</option>
+                    <option *ngFor="let t of idTypes" [value]="t">{{ t }}</option>
+                  </select>
+                </label>
+                <div class="md:col-span-2 grid gap-5 md:grid-cols-2">
+                  <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-semibold text-slate-800">Government ID upload</p>
+                        <p class="text-xs text-slate-500">{{ uploadOptions['verification.govIdUrl']?.hint }}</p>
+                      </div>
+                      <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                        <input type="file" [accept]="uploadOptions['verification.govIdUrl']?.accept" (change)="onFileChange('verification','govIdUrl',$event)" class="sr-only" />
+                        <span>Upload</span>
+                      </label>
+                    </div>
+                    <p class="text-xs text-slate-500" *ngIf="uploadingField['verification.govIdUrl']">Uploading…</p>
+                    <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verification.govIdUrl">
+                      <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(verification.govIdUrl) || null">{{ displayFileName(verification.govIdUrl) }}</a>
+                      <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('verification','govIdUrl')">Remove</button>
+                    </div>
+                    <p class="text-xs text-rose-600" *ngIf="uploadErrors['verification.govIdUrl']">{{ uploadErrors['verification.govIdUrl'] }}</p>
+                  </div>
+                  <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-semibold text-slate-800">Selfie / short video with ID</p>
+                        <p class="text-xs text-slate-500">{{ uploadOptions['verification.selfieUrl']?.hint }}</p>
+                      </div>
+                      <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                        <input type="file" [accept]="uploadOptions['verification.selfieUrl']?.accept" (change)="onFileChange('verification','selfieUrl',$event)" class="sr-only" />
+                        <span>Upload</span>
+                      </label>
+                    </div>
+                    <p class="text-xs text-slate-500" *ngIf="uploadingField['verification.selfieUrl']">Uploading…</p>
+                    <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verification.selfieUrl">
+                      <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(verification.selfieUrl) || null">{{ displayFileName(verification.selfieUrl) }}</a>
+                      <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('verification','selfieUrl')">Remove</button>
+                    </div>
+                    <p class="text-xs text-rose-600" *ngIf="uploadErrors['verification.selfieUrl']">{{ uploadErrors['verification.selfieUrl'] }}</p>
+                  </div>
+                  <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white md:col-span-2">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-semibold text-slate-800">Proof of residence (optional)</p>
+                        <p class="text-xs text-slate-500">{{ uploadOptions['verification.proofResidenceUrl']?.hint }}</p>
+                      </div>
+                      <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                        <input type="file" [accept]="uploadOptions['verification.proofResidenceUrl']?.accept" (change)="onFileChange('verification','proofResidenceUrl',$event)" class="sr-only" />
+                        <span>Upload</span>
+                      </label>
+                    </div>
+                    <p class="text-xs text-slate-500" *ngIf="uploadingField['verification.proofResidenceUrl']">Uploading…</p>
+                    <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="verification.proofResidenceUrl">
+                      <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(verification.proofResidenceUrl) || null">{{ displayFileName(verification.proofResidenceUrl) }}</a>
+                      <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('verification','proofResidenceUrl')">Remove</button>
+                    </div>
+                    <p class="text-xs text-rose-600" *ngIf="uploadErrors['verification.proofResidenceUrl']">{{ uploadErrors['verification.proofResidenceUrl'] }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===2" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Education & credentials</h3>
+              <p class="mt-1 text-sm text-slate-500">Share proof of qualifications and supporting documents.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(2) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Please complete: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white md:col-span-2">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Highest degree</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['education.degreeUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['education.degreeUrl']?.accept" (change)="onFileChange('education','degreeUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['education.degreeUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="education.degreeUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(education.degreeUrl) || null">{{ displayFileName(education.degreeUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('education','degreeUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['education.degreeUrl']">{{ uploadErrors['education.degreeUrl'] }}</p>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Teaching certifications (optional)</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['education.certificateUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['education.certificateUrl']?.accept" (change)="onFileChange('education','certificateUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['education.certificateUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="education.certificateUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(education.certificateUrl) || null">{{ displayFileName(education.certificateUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('education','certificateUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['education.certificateUrl']">{{ uploadErrors['education.certificateUrl'] }}</p>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Academic transcripts (optional)</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['education.transcriptUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['education.transcriptUrl']?.accept" (change)="onFileChange('education','transcriptUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['education.transcriptUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="education.transcriptUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(education.transcriptUrl) || null">{{ displayFileName(education.transcriptUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('education','transcriptUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['education.transcriptUrl']">{{ uploadErrors['education.transcriptUrl'] }}</p>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Portfolio / class samples (optional)</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['education.portfolioUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['education.portfolioUrl']?.accept" (change)="onFileChange('education','portfolioUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['education.portfolioUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="education.portfolioUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(education.portfolioUrl) || null">{{ displayFileName(education.portfolioUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('education','portfolioUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['education.portfolioUrl']">{{ uploadErrors['education.portfolioUrl'] }}</p>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white md:col-span-2">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Reference letter or LinkedIn (optional)</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['education.referenceUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['education.referenceUrl']?.accept" (change)="onFileChange('education','referenceUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['education.referenceUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="education.referenceUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(education.referenceUrl) || null">{{ displayFileName(education.referenceUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('education','referenceUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['education.referenceUrl']">{{ uploadErrors['education.referenceUrl'] }}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===3" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Teaching profile</h3>
+              <p class="mt-1 text-sm text-slate-500">Let students know what and how you teach.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Subjects
+                  <input [(ngModel)]="subjects" name="subjects" placeholder="Mathematics, Chemistry, SAT prep"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  <span class="text-xs font-normal text-slate-400">What can you teach confidently?</span>
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Student levels
+                  <input [(ngModel)]="teaching.levels" name="levels" placeholder="Beginners, Form 4, College"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Formats
+                  <input [(ngModel)]="teaching.formats" name="formats" placeholder="Live 1:1, group sessions, recorded"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Hourly rate
+                  <input [(ngModel)]="teaching.rate" name="rate" placeholder="$20/hour"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Availability
+                  <input [(ngModel)]="teaching.availability" name="availability" placeholder="Weeknights, Saturday mornings"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===4" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Media showcase</h3>
+              <p class="mt-1 text-sm text-slate-500">Share a quick hello and a sample lesson to help learners connect with you.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(4) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Please complete: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Video introduction</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['media.introUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['media.introUrl']?.accept" (change)="onFileChange('media','introUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['media.introUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="media.introUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(media.introUrl) || null">{{ displayFileName(media.introUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('media','introUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['media.introUrl']">{{ uploadErrors['media.introUrl'] }}</p>
+                </div>
+                <div class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-800">Demo lesson / sample</p>
+                      <p class="text-xs text-slate-500">{{ uploadOptions['media.demoUrl']?.hint }}</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition hover:bg-indigo-50">
+                      <input type="file" [accept]="uploadOptions['media.demoUrl']?.accept" (change)="onFileChange('media','demoUrl',$event)" class="sr-only" />
+                      <span>Upload</span>
+                    </label>
+                  </div>
+                  <p class="text-xs text-slate-500" *ngIf="uploadingField['media.demoUrl']">Uploading…</p>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" *ngIf="media.demoUrl">
+                    <a class="font-medium text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener" [attr.href]="resolveUploadUrl(media.demoUrl) || null">{{ displayFileName(media.demoUrl) }}</a>
+                    <button type="button" class="text-rose-500 hover:text-rose-600" (click)="clearFile('media','demoUrl')">Remove</button>
+                  </div>
+                  <p class="text-xs text-rose-600" *ngIf="uploadErrors['media.demoUrl']">{{ uploadErrors['media.demoUrl'] }}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===5" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Consents & agreements</h3>
+              <p class="mt-1 text-sm text-slate-500">Confirm the policies that keep learners safe.</p>
+            </div>
+            <div class="space-y-4 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(5) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Please complete: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-3 md:grid-cols-2">
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="consents.backgroundCheck" name="backgroundCheck"
+                         class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>I consent to a background check</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="consents.codeOfConduct" name="codeOfConduct"
+                         class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>I agree to the Code of Conduct</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="consents.cleanRecord" name="cleanRecord"
+                         class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>I confirm I have no record of abuse or exploitation</span>
+                </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-700 transition hover:border-indigo-200">
+                  <input type="checkbox" [(ngModel)]="consents.lessonRecording" name="lessonRecording"
+                         class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span>I consent to lesson recording for safety and quality</span>
+                </label>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===6" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Payout details</h3>
+              <p class="mt-1 text-sm text-slate-500">Tell us where to send your earnings.</p>
+            </div>
+            <div class="space-y-6 px-6 py-6 sm:px-8">
+              <ng-container *ngIf="fieldsMissingForStep(6) as missing">
+                <div *ngIf="missing.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Please complete: {{ missing.join(', ') }}
+                </div>
+              </ng-container>
+              <div class="grid gap-5 md:grid-cols-2">
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Payout method
+                  <input [(ngModel)]="payout.method" name="payoutMethod" placeholder="PayPal, Stripe, Wise, Bank transfer"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Payout name (must match ID)
+                  <input [(ngModel)]="payout.name" name="payoutName"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+                <label class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Tax info (optional)
+                  <input [(ngModel)]="payout.tax" name="payoutTax" placeholder="Add any tax ID or form references"
+                         class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                </label>
+              </div>
+            </div>
+          </section>
+          <section *ngIf="step===7" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
+            <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Review & submit</h3>
+              <p class="mt-1 text-sm text-slate-500">Double-check your details before submitting.</p>
+            </div>
+            <div class="space-y-5 px-6 py-6 sm:px-8">
+              <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Progress: {{ progressPct }}%. We validate everything once you submit, so partial drafts are welcome.
+              </div>
+              <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700" *ngIf="missingRequired().length">
+                Missing: {{ missingRequired().join(', ') }}
+              </div>
+              <div class="text-sm text-slate-600">
+                <p class="font-medium text-slate-900">Reminder</p>
+                <p class="mt-1">Submitted applications are typically reviewed within 2 business days. We will email you once a decision is made.</p>
+              </div>
+            </div>
+          </section>
+          <div class="flex flex-wrap items-center gap-3 rounded-3xl bg-white px-6 py-5 shadow-sm ring-1 ring-slate-100/80 sm:px-8">
+            <div class="flex flex-wrap gap-3">
+              <button type="button" (click)="back()" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50" [disabled]="step===0">Back</button>
+              <button type="button" (click)="next()" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50" [disabled]="!validForStep(step)">Next</button>
+              <button type="button" (click)="saveDraft()" class="rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50" [disabled]="saving">Save draft</button>
+            </div>
+            <button type="submit" class="ml-auto rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60" [disabled]="saving">{{ saving ? 'Submitting...' : 'Submit for review' }}</button>
+          </div>
+          <div *ngIf="message" class="rounded-2xl border px-4 py-3 text-sm"
+               [ngClass]="{'border-emerald-200 bg-emerald-50 text-emerald-700': success, 'border-rose-200 bg-rose-50 text-rose-700': !success}">
+            {{ message }}
+          </div>
+        </form>
       </div>
-
-      <nav class="flex flex-wrap gap-2 mb-4">
-        <button type="button" *ngFor="let s of steps; let i = index"
-                (click)="canGoTo(i) && (step=i)"
-                class="px-3 py-1 rounded border text-sm"
-                [class.opacity-50]="!canGoTo(i)" [disabled]="!canGoTo(i)"
-                [class.bg-blue-600]="i===step" [class.text-white]="i===step" [class.border-blue-600]="i===step">{{ s }}</button>
-      </nav>
-
-      <form class="space-y-6" (ngSubmit)="apply(false)">
-        <section class="space-y-3" *ngIf="step===0">
-          <h3 class="font-semibold">Personal Info</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(0).length">Required: {{ fieldsMissingForStep(0).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Full legal name</label>
-              <input [(ngModel)]="profile.legalName" name="legalName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Display name</label>
-              <input [(ngModel)]="profile.displayName" name="displayName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Email</label>
-              <input [(ngModel)]="profile.email" name="email" type="email" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Phone</label>
-              <input [(ngModel)]="profile.phone" name="phone" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Country</label>
-              <input [(ngModel)]="profile.country" name="country" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Languages</label>
-              <input [(ngModel)]="profile.languages" name="languages" placeholder="comma-separated" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Time zone</label>
-              <input [(ngModel)]="profile.timezone" name="timezone" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Short bio / About Me</label>
-              <textarea [(ngModel)]="bio" name="bio" rows="3" class="w-full border border-gray-300 rounded-md px-3 py-2"></textarea>
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===1">
-          <h3 class="font-semibold">Verification</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(1).length">Required: {{ fieldsMissingForStep(1).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Government ID type</label>
-              <input [(ngModel)]="verification.govIdType" name="govIdType" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Government ID (file URL)</label>
-              <input [(ngModel)]="verification.govIdUrl" name="govIdUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Selfie/Video with ID (URL)</label>
-              <input [(ngModel)]="verification.selfieUrl" name="selfieUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Proof of residence (URL, optional)</label>
-              <input [(ngModel)]="verification.proofResidenceUrl" name="proofResidenceUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===2">
-          <h3 class="font-semibold">Education & Credentials</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(2).length">Required: {{ fieldsMissingForStep(2).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Highest degree (URL)</label>
-              <input [(ngModel)]="education.degreeUrl" name="degreeUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Diploma, degree, certification" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Teaching certifications (URL)</label>
-              <input [(ngModel)]="education.certUrl" name="certUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Optional" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Portfolio / class samples (URL)</label>
-              <input [(ngModel)]="education.portfolioUrl" name="portfolioUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Optional" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Reference / LinkedIn (URL)</label>
-              <input [(ngModel)]="education.referenceUrl" name="referenceUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Optional" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===3">
-          <h3 class="font-semibold">Teaching Profile</h3>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Subjects</label>
-              <input [(ngModel)]="subjects" name="subjects" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="comma-separated" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Student levels</label>
-              <input [(ngModel)]="teaching.levels" name="levels" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Beginner, Intermediate, Advanced" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Formats</label>
-              <input [(ngModel)]="teaching.formats" name="formats" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="live, recorded, hybrid" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Hourly rate</label>
-              <input [(ngModel)]="teaching.rate" name="rate" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="$20/hour" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Availability</label>
-              <input [(ngModel)]="teaching.availability" name="availability" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Weeknights, weekends" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===4">
-          <h3 class="font-semibold">Media</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(4).length">Required: {{ fieldsMissingForStep(4).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Video introduction (URL)</label>
-              <input [(ngModel)]="media.introUrl" name="introUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Self introduction" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Demo lesson / sample (URL)</label>
-              <input [(ngModel)]="media.demoUrl" name="demoUrl" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===5">
-          <h3 class="font-semibold">Consents & Agreements</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(5).length">Required: {{ fieldsMissingForStep(5).join(', ') }}</div>
-          <div class="grid gap-2 md:grid-cols-2">
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="consents.backgroundCheck" name="backgroundCheck" /> I consent to a background check</label>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="consents.codeOfConduct" name="codeOfConduct" /> I agree to the Code of Conduct</label>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="consents.cleanRecord" name="cleanRecord" /> I confirm I have no record of abuse or exploitation</label>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="consents.lessonRecording" name="lessonRecording" /> I consent to lesson recording for safety and quality</label>
-          </div>
-        </section>
-
-        <section class="space-y-3" *ngIf="step===6">
-          <h3 class="font-semibold">Payout</h3>
-          <div class="text-xs text-red-700" *ngIf="fieldsMissingForStep(6).length">Required: {{ fieldsMissingForStep(6).join(', ') }}</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div>
-              <label class="block text-sm mb-1">Method</label>
-              <input [(ngModel)]="payout.method" name="payoutMethod" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="PayPal, Stripe, Wise, Bank" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Payout name (must match ID)</label>
-              <input [(ngModel)]="payout.name" name="payoutName" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm mb-1">Tax info (optional)</label>
-              <input [(ngModel)]="payout.tax" name="payoutTax" class="w-full border border-gray-300 rounded-md px-3 py-2" />
-            </div>
-          </div>
-        </section>
-
-        <section *ngIf="step===7" class="space-y-3">
-          <h3 class="font-semibold">Review & Submit</h3>
-          <p class="text-sm text-gray-700">Progress: {{ progressPct }}%. You can submit when all required items are complete. You may still submit and the server will validate.</p>
-          <div class="text-xs text-red-700" *ngIf="missingRequired().length">Missing: {{ missingRequired().join(', ') }}</div>
-        </section>
-
-        <div class="flex items-center gap-3">
-          <button type="button" (click)="back()" class="px-4 py-2 rounded-md border" [disabled]="step===0">Back</button>
-          <button type="button" (click)="next(); saveDraft()" class="px-4 py-2 rounded-md border" [disabled]="!validForStep(step)">Next</button>
-          <button type="button" (click)="saveDraft()" class="bg-gray-700 text-white px-4 py-2 rounded-md" [disabled]="saving">Save Draft</button>
-          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md" [disabled]="saving">{{ saving ? 'Submitting.' : 'Submit for Review' }}</button>
-          <div *ngIf="message" class="text-sm" [class.text-green-700]="success" [class.text-red-700]="!success">{{ message }}</div>
+      <aside class="space-y-6">
+        <div class="rounded-3xl bg-white/80 p-6 shadow-sm ring-1 ring-slate-100/80 backdrop-blur-lg sm:p-7">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">What's ahead</h3>
+          <ul class="mt-4 space-y-4 text-slate-600">
+            <li *ngFor="let def of steps; let i = index" class="flex gap-3">
+              <div class="flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold"
+                   [ngClass]="{
+                     'border-indigo-500 bg-indigo-500 text-white': i===step,
+                     'border-indigo-200 bg-indigo-50 text-indigo-600': isStepComplete(i),
+                     'border-slate-200 bg-white text-slate-400': !isStepComplete(i) && i!==step
+                   }">
+                {{ i + 1 }}
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-semibold text-slate-800">{{ def.label }}</p>
+                <p class="text-xs text-slate-500">{{ def.description }}</p>
+              </div>
+            </li>
+          </ul>
         </div>
-      </form>
+        <div class="rounded-3xl border border-indigo-100 bg-indigo-50/60 p-6 text-sm text-indigo-900 shadow-sm sm:p-7">
+          <p class="text-base font-semibold">Need a hand?</p>
+          <p class="mt-2">Use the in-app support chat if you get stuck or leave a note in your application. We are happy to review drafts and answer questions.</p>
+        </div>
+      </aside>
     </div>
-  
-
+  </div>
+</section>

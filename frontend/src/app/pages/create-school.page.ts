@@ -111,14 +111,14 @@ export class CreateSchoolPage implements OnInit {
   // UI state
   step = 0;
   readonly stepDefinitions = [
-    { slug: 'info', label: 'School Info' },
-    { slug: 'verification', label: 'Verification' },
-    { slug: 'staff', label: 'Staff & Tutors' },
-    { slug: 'financial', label: 'Financial' },
-    { slug: 'curriculum', label: 'Curriculum' },
-    { slug: 'agreements', label: 'Agreements' },
-    { slug: 'extras', label: 'Extras' },
-    { slug: 'review', label: 'Review & Submit' }
+    { slug: 'info', label: 'School Info', description: 'Introduce your school and core contact details.' },
+    { slug: 'verification', label: 'Verification', description: 'Upload registration, compliance, and founder identity docs.' },
+    { slug: 'staff', label: 'Staff & Tutors', description: 'List key staff members and invite tutors to join.' },
+    { slug: 'financial', label: 'Financial', description: 'Explain how your school handles payouts, banking, and revenue.' },
+    { slug: 'curriculum', label: 'Curriculum', description: 'Describe your learning approach, subjects, and sample materials.' },
+    { slug: 'agreements', label: 'Agreements', description: 'Confirm policies, quality standards, and platform expectations.' },
+    { slug: 'extras', label: 'Extras', description: 'Share optional branding, marketing, or integration info.' },
+    { slug: 'review', label: 'Review & Submit', description: 'Check your application summary before submission.' }
   ];
   private currentSlug = this.stepDefinitions[0].slug;
   saving = false;
@@ -126,6 +126,7 @@ export class CreateSchoolPage implements OnInit {
   uploadError = '';
   uploading = false;
   success = false;
+  get currentStep() { return this.stepDefinitions[this.step] ?? this.stepDefinitions[0]; }
   status: 'draft'|'pending'|'approved'|'rejected'|null = null;
   statusLine = '';
   // expose urlFor in template
@@ -310,6 +311,7 @@ export class CreateSchoolPage implements OnInit {
     return lastIndex;
   }
   canGoTo(i: number): boolean { return i <= this.maxReachableStep() }
+  isStepComplete(i: number): boolean { return i < this.step && this.fieldsMissingForStep(i).length === 0 }
 
   missingRequired(): string[] {
     this.ensureFormShape();
