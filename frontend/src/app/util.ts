@@ -67,3 +67,33 @@ export async function verifySession(opts: { attemptRefresh?: boolean } = {}): Pr
   }
   return { valid: false };
 }
+
+export interface AuthedUserProfile {
+  uuid?: string;
+  email?: string;
+  name?: string;
+  username?: string;
+  preferences?: any;
+  [key: string]: any;
+}
+
+let cachedUserProfilePromise: Promise<AuthedUserProfile | null> | null = null;
+
+export async function fetchUserProfile(opts: { force?: boolean } = {}): Promise<AuthedUserProfile | null> {
+  const force = !!opts.force;
+  if (!force && cachedUserProfilePromise) {
+    return cachedUserProfilePromise;
+  }
+  cachedUserProfilePromise = (async () => {
+    try {
+      const res = await fetch(`${urlFor('api')}/v1/me`, { credentials: 'include' });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const data = json?.data;
+      return data && typeof data === 'object' ? data as AuthedUserProfile : null;
+    } catch {
+      return null;
+    }
+  })();
+  return cachedUserProfilePromise;
+}

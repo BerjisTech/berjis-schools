@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { urlFor } from '../../app/util';
+import { AuthedUserProfile, fetchUserProfile, urlFor } from '../../app/util';
 
 type VerifyDocKey = 'registrationCertUrl' | 'taxPinUrl' | 'proofAddressUrl' | 'founderIdUrl';
 type FinanceDocKey = 'taxDocsUrl' | 'bankStatementUrl';
@@ -127,6 +127,7 @@ export class CreateSchoolPage implements OnInit {
   uploading = false;
   success = false;
   get currentStep() { return this.stepDefinitions[this.step] ?? this.stepDefinitions[0]; }
+  private userProfilePrefillLocked = false;
   status: 'draft'|'pending'|'approved'|'rejected'|null = null;
   statusLine = '';
   // expose urlFor in template
@@ -181,6 +182,13 @@ export class CreateSchoolPage implements OnInit {
     } catch {
       this.status = null;
       this.statusLine = '';
+    }
+    if (!this.userProfilePrefillLocked) {
+      const applied = await this.applyUserProfileDefaults();
+      if (applied) {
+        this.ensureFormShape();
+      }
+      this.userProfilePrefillLocked = true;
     }
   }
 
@@ -368,6 +376,61 @@ export class CreateSchoolPage implements OnInit {
         this.goToStep(reachable, true);
       }
     } catch {}
+    void this.applyUserProfileDefaults();
+  }
+
+  private async applyUserProfileDefaults(): Promise<boolean> {
+    let profile: AuthedUserProfile | null = null;
+    try {
+      profile = await fetchUserProfile();
+    } catch {
+      profile = null;
+    }
+    if (!profile) return false;
+    if (!this.info.contact || typeof this.info.contact !== 'object') {
+      this.info.contact = { name: '', email: '', phone: '' };
+    }
+    const isBlank = (value: any): boolean => typeof value !== 'string' || value.trim().length === 0;
+    const name = typeof profile.name === 'string' ? profile.name.trim() : '';
+    const username = typeof profile.username === 'string' ? profile.username.trim() : '';
+    const displayName = name || username;
+    const email = typeof profile.email === 'string' ? profile.email.trim() : '';
+    const phone = this.extractProfilePhone(profile);
+    let changed = false;
+    if (isBlank(this.info.contact.name) && displayName) {
+      this.info.contact.name = displayName;
+      changed = true;
+    }
+    if (isBlank(this.info.contact.email) && email) {
+      this.info.contact.email = email;
+      changed = true;
+    }
+    if (isBlank(this.info.contact.phone) && phone) {
+      this.info.contact.phone = phone;
+      changed = true;
+    }
+    return changed;
+  }
+
+  private extractProfilePhone(profile: AuthedUserProfile | null): string {
+    if (!profile) return '';
+    const prefs: any = profile.preferences ?? {};
+    const candidates: Array<unknown> = [
+      (profile as any)?.phone,
+      prefs?.contactPhone,
+      prefs?.contact?.phone,
+      prefs?.contact?.mobile,
+      prefs?.profile?.phone,
+      prefs?.profile?.mobile,
+      prefs?.phone
+    ];
+    for (const value of candidates) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) return trimmed;
+      }
+    }
+    return '';
   }
 
   private parseSection<T>(raw: any, template: T): T {

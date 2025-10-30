@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
-import { urlFor } from '../../app/util';
+import { AuthedUserProfile, fetchUserProfile, urlFor } from '../../app/util';
 
 type StepSlug = 'info' | 'verification' | 'education' | 'teaching' | 'media' | 'consents' | 'payout' | 'review';
 
@@ -284,6 +284,8 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
     cleanRecord: false,
     lessonRecording: false
   };
+  private readonly draftStorageKey = 'tutorOnboardingDraft';
+  private localDraftLoaded = false;
 
   bio = '';
   subjects = '';
@@ -311,6 +313,7 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
 
   uploadingField: Record<string, boolean> = {};
   uploadErrors: Record<string, string | undefined> = {};
+  private userProfilePrefillLocked = false;
 
   constructor(private router: Router, private route: ActivatedRoute) {}
 
@@ -322,6 +325,7 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.loadLocalDraft();
     this.paramSub = this.route.paramMap.subscribe(params => {
       const slug = params.get('section');
       this.setStepBySlug(slug);
@@ -469,10 +473,13 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
             this.education.certificateUrl = legacyCert;
           }
         }
+        this.persistDraftSnapshot();
       } else {
         this.status = null;
         this.statusLine = '';
-        this.resetToDefaults();
+        if (!this.localDraftLoaded) {
+          this.resetToDefaults();
+        }
       }
     } catch {
       this.status = null;
@@ -480,7 +487,70 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
     } finally {
       this.syncCountryControls();
       this.syncTimezoneControls();
+      if (!this.userProfilePrefillLocked) {
+        const applied = await this.applyUserProfileDefaults();
+        if (applied) {
+          this.syncCountryControls();
+          this.syncTimezoneControls();
+        }
+        this.userProfilePrefillLocked = true;
+      }
     }
+  }
+
+  private async applyUserProfileDefaults(): Promise<boolean> {
+    let profile: AuthedUserProfile | null = null;
+    try {
+      profile = await fetchUserProfile();
+    } catch {
+      profile = null;
+    }
+    if (!profile) return false;
+    const isBlank = (value: any): boolean => typeof value !== 'string' || value.trim().length === 0;
+    const name = typeof profile.name === 'string' ? profile.name.trim() : '';
+    const username = typeof profile.username === 'string' ? profile.username.trim() : '';
+    const displayName = name || username;
+    const email = typeof profile.email === 'string' ? profile.email.trim() : '';
+    const phone = this.extractPhone(profile);
+    let changed = false;
+    if (isBlank(this.profile.displayName) && displayName) {
+      this.profile.displayName = displayName;
+      changed = true;
+    }
+    if (isBlank(this.profile.legalName) && name) {
+      this.profile.legalName = name;
+      changed = true;
+    }
+    if (isBlank(this.profile.email) && email) {
+      this.profile.email = email;
+      changed = true;
+    }
+    if (isBlank(this.profile.phone) && phone) {
+      this.profile.phone = phone;
+      changed = true;
+    }
+    return changed;
+  }
+
+  private extractPhone(profile: AuthedUserProfile | null): string {
+    if (!profile) return '';
+    const prefs: any = profile.preferences ?? {};
+    const candidates: Array<unknown> = [
+      (profile as any)?.phone,
+      prefs?.contactPhone,
+      prefs?.contact?.phone,
+      prefs?.contact?.mobile,
+      prefs?.profile?.phone,
+      prefs?.profile?.mobile,
+      prefs?.phone
+    ];
+    for (const value of candidates) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) return trimmed;
+      }
+    }
+    return '';
   }
 
   private resetToDefaults(): void {
@@ -493,6 +563,7 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
     this.media = { ...this.defaultMedia };
     this.payout = { ...this.defaultPayout };
     this.consents = { ...this.defaultConsents };
+    this.clearDraftSnapshot();
   }
 
   back(): void {
@@ -601,6 +672,7 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
   async saveDraft(): Promise<void> {
     this.normalizeProfileSelections();
     await this.apply(true, true);
+    this.persistDraftSnapshot();
   }
 
   async onFileChange(section: UploadSection, key: string, event: Event): Promise<void> {
@@ -626,6 +698,52 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
     const mapKey = `${section}.${key}`;
     this.getSection(section)[key] = '';
     this.uploadErrors[mapKey] = undefined;
+  }
+
+  private loadLocalDraft(): void {
+    try {
+      const raw = localStorage.getItem(this.draftStorageKey);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object') return;
+      if (typeof data.bio === 'string') this.bio = data.bio;
+      if (typeof data.subjects === 'string') this.subjects = data.subjects;
+      if (data.profile) this.profile = mergeWithDefaults(this.defaultProfile, data.profile);
+      if (data.verification) this.verification = mergeWithDefaults(this.defaultVerification, data.verification);
+      if (data.education) this.education = mergeWithDefaults(this.defaultEducation, data.education);
+      if (data.teaching) this.teaching = mergeWithDefaults(this.defaultTeaching, data.teaching);
+      if (data.media) this.media = mergeWithDefaults(this.defaultMedia, data.media);
+      if (data.payout) this.payout = mergeWithDefaults(this.defaultPayout, data.payout);
+      if (data.consents) this.consents = mergeWithDefaults(this.defaultConsents, data.consents);
+      this.localDraftLoaded = true;
+    } catch {
+      // ignore corrupt drafts
+    }
+  }
+
+  private persistDraftSnapshot(): void {
+    try {
+      const snapshot = {
+        bio: this.bio,
+        subjects: this.subjects,
+        profile: { ...this.profile },
+        verification: { ...this.verification },
+        education: { ...this.education },
+        teaching: { ...this.teaching },
+        media: { ...this.media },
+        payout: { ...this.payout },
+        consents: { ...this.consents }
+      };
+      localStorage.setItem(this.draftStorageKey, JSON.stringify(snapshot));
+      this.localDraftLoaded = true;
+    } catch {
+      // storage may be unavailable, ignore
+    }
+  }
+
+  private clearDraftSnapshot(): void {
+    try { localStorage.removeItem(this.draftStorageKey) } catch {}
+    this.localDraftLoaded = false;
   }
 
   resolveUploadUrl(path: string | null | undefined): string | null {
