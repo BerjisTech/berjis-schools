@@ -16,10 +16,14 @@ export class AppComponent implements OnInit {
   showAccount = signal(false);
   search = signal('');
   loginHref = loginUrl();
+  isDark = false;
 
   constructor(private router: Router) {}
 
   async ngOnInit() {
+    const persisted = (localStorage.getItem('theme') || '').toLowerCase();
+    const preferDark = persisted === 'dark';
+    this.setTheme(preferDark ? 'dark' : 'light');
     try {
       const result = await verifySession({ attemptRefresh: true });
       this.authed.set(!!result.valid);
@@ -34,5 +38,12 @@ export class AppComponent implements OnInit {
     ev.preventDefault();
     const q = this.search().trim();
     this.router.navigate(['/search'], { queryParams: { q } });
+  }
+
+  toggleTheme() { this.setTheme(this.isDark ? 'light' : 'dark'); }
+  private setTheme(mode: 'light' | 'dark') {
+    this.isDark = mode === 'dark';
+    document.documentElement.classList.toggle('dark', mode === 'dark');
+    try { localStorage.setItem('theme', mode); } catch {}
   }
 }

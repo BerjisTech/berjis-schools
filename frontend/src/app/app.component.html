@@ -1,4 +1,10 @@
-<div *ngIf="authed(); else guest" class="flex min-h-screen bg-slate-50">
+<div class="min-h-screen flex flex-col bg-app-gradient bg-app-gradient-animated text-[color:var(--color-text-primary)] dark:text-[color:var(--color-text-dark)]">
+  <button type="button" (click)="toggleTheme()"
+          class="fixed top-4 right-4 z-50 rounded-full p-3 backdrop-blur shadow-brand bg-white/80 text-blue-900 hover:bg-white dark:bg-slate-800/80 dark:text-[color:var(--color-gold)]"
+          aria-label="Toggle theme">
+    <span class="material-symbols-outlined align-middle">{{ isDark ? 'light_mode' : 'dark_mode' }}</span>
+  </button>
+  <div *ngIf="authed(); else guest" class="flex min-h-screen">
   <aside *ngIf="showSidebar()" class="hidden lg:flex lg:flex-col w-64 border-r border-slate-200 bg-white/80 backdrop-blur-lg p-5 space-y-6 shadow-sm">
     <div class="flex items-center gap-3">
       <span class="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center font-semibold">Bs</span>
@@ -78,6 +84,7 @@
     <main class="flex-1 overflow-y-auto">
       <router-outlet></router-outlet>
     </main>
+  </div>
   </div>
 </div>
 
