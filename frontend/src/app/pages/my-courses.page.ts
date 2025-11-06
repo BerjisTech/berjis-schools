@@ -19,7 +19,7 @@ interface CourseMetrics {
 })
 export class MyCoursesPage implements OnInit {
   loading = signal(true);
-  courses = signal<(Course & { metrics: CourseMetrics })[]>([]);
+  courses = signal<Array<Course & { metrics: CourseMetrics }>>([]);
   selectedCourseId = signal<string | null>(null);
   editPayload = signal<{ title: string; description: string; visibility: 'public'|'private'|'school'; isPaid: boolean; priceCents: number } | null>(null);
   saving = signal(false);
@@ -52,8 +52,9 @@ export class MyCoursesPage implements OnInit {
         },
       }));
       this.courses.set(enriched);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to load your courses.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to load your courses.';
+      this.toast.set({ kind: 'error', text: msg });
     } finally {
       this.loading.set(false);
     }

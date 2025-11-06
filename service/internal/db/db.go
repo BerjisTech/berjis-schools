@@ -1,10 +1,10 @@
 package db
 
 import (
-    "github.com/jmoiron/sqlx"
-    _ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
 func Connect(dsn string) (*sqlx.DB, error) {
-    return sqlx.Connect("pgx", dsn)
+	return sqlx.Connect("pgx", dsn)
 }

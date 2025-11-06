@@ -3,11 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterModule } from '@angular/router';
 import { loginUrl, verifySession } from './util';
+import { I18nService } from './i18n.service';
+import { TPipe } from './t.pipe';
+import { AiChatComponent } from './components/ai-chat/ai-chat.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterModule, RouterLink, TPipe, AiChatComponent],
   templateUrl: './app.component.html'
 })
 export class AppComponent implements OnInit {
@@ -18,7 +21,7 @@ export class AppComponent implements OnInit {
   loginHref = loginUrl();
   isDark = false;
 
-  constructor(private router: Router) {}
+  constructor(private router: Router, private i18n: I18nService) {}
 
   async ngOnInit() {
     const persisted = (localStorage.getItem('theme') || '').toLowerCase();
@@ -30,6 +33,7 @@ export class AppComponent implements OnInit {
     } catch {
       this.authed.set(false);
     }
+    await this.i18n.setLang(localStorage.getItem('lang') || 'en');
   }
 
   toggleAccount() { this.showAccount.update(x => !x) }
@@ -44,6 +48,8 @@ export class AppComponent implements OnInit {
   private setTheme(mode: 'light' | 'dark') {
     this.isDark = mode === 'dark';
     document.documentElement.classList.toggle('dark', mode === 'dark');
-    try { localStorage.setItem('theme', mode); } catch {}
+    try { localStorage.setItem('theme', mode); } catch { /* no-op: localStorage not available */ }
   }
+
+  setLang(lang: string) { this.i18n.setLang(lang); }
 }

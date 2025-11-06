@@ -95,17 +95,17 @@
       </div>
       <div class="space-y-4 text-sm">
         <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Title</label>
-          <input class="w-full border border-slate-200 rounded-xl px-3 py-2" [(ngModel)]="payload.title" />
+          <label class="block text-xs font-medium text-slate-600 mb-1" for="editTitle">Title</label>
+          <input id="editTitle" class="w-full border border-slate-200 rounded-xl px-3 py-2" [(ngModel)]="payload.title" />
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Description</label>
-          <textarea class="w-full border border-slate-200 rounded-xl px-3 py-2" rows="3" [(ngModel)]="payload.description"></textarea>
+          <label class="block text-xs font-medium text-slate-600 mb-1" for="editDesc">Description</label>
+          <textarea id="editDesc" class="w-full border border-slate-200 rounded-xl px-3 py-2" rows="3" [(ngModel)]="payload.description"></textarea>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Visibility</label>
-            <select class="w-full border border-slate-200 rounded-xl px-3 py-2"
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="editVisibility">Visibility</label>
+            <select id="editVisibility" class="w-full border border-slate-200 rounded-xl px-3 py-2"
               [(ngModel)]="payload.visibility">
               <option value="public">Public - discoverable by everyone</option>
               <option value="private">Private - invite only</option>
@@ -113,13 +113,13 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Pricing</label>
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="editPrice">Pricing</label>
             <div class="flex items-center gap-3">
               <label class="flex items-center gap-2 text-xs">
                 <input type="checkbox" [(ngModel)]="payload.isPaid" />
                 Paid course
               </label>
-              <input type="number" class="w-28 border border-slate-200 rounded-xl px-2 py-1 text-sm"
+              <input id="editPrice" type="number" class="w-28 border border-slate-200 rounded-xl px-2 py-1 text-sm"
                 [(ngModel)]="payload.priceCents" [disabled]="!payload.isPaid" />
               <span class="text-xs text-slate-500">KES (cents)</span>
             </div>

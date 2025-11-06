@@ -26,7 +26,7 @@ export class HomePage implements OnInit {
   staffSchools: School[] = [];
   myTutors: string[] = [];
   inProgressLessonsCount: number | null = null;
-  recentTests: { id: string; title: string }[] = [];
+  recentTests: Array<{ id: string; title: string }> = [];
   tutorStatus: string | null = null;
   tutorStatusDisplay = 'Not applied yet';
   enrolledClasses: ClassItem[] = [];
@@ -36,7 +36,7 @@ export class HomePage implements OnInit {
   tutorActionLabel = 'Become a tutor';
   tutorActionHelper = 'Apply to teach with Berjis.';
   tutorActionHref = '/tutors/become';
-  primaryActions: { label: string; href: string; icon: string }[] = [
+  primaryActions: Array<{ label: string; href: string; icon: string }> = [
     { label: 'Continue lessons', href: '/lessons', icon: 'play_circle' },
     { label: 'My assessments', href: '/tests', icon: 'quiz' },
     { label: 'Browse classes', href: '/classes', icon: 'travel_explore' },
@@ -99,7 +99,7 @@ export class HomePage implements OnInit {
       try {
         const tRes = await fetch(`${urlFor('schools-api')}/v1/ratings/tutors/top?limit=5`, { credentials: 'include' });
         const tj = await tRes.json();
-        const tops: { tutorUserId: string }[] = tj?.data ?? [];
+      const tops: Array<{ tutorUserId: string }> = tj?.data ?? [];
         this.featuredTutors = tops.map(t => t.tutorUserId);
       } catch { this.featuredTutors = ['Top Tutor'] }
       try {

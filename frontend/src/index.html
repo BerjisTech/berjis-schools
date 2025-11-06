@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head>
+<head>\n  <link rel="manifest" href="/assets/manifest.webmanifest">\n  <meta name="theme-color" content="#1d4ed8">
   <meta charset="utf-8">
   <title>Berjis Schools</title>
   <base href="/">
@@ -8,5 +8,6 @@
 </head>
 <body>
   <app-root>Loading Berjis Schools…</app-root>
-</body>
+  <script>if ("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/service-worker.js"));}</script>\n</body>
 </html>
+

@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { SchoolsService } from '../../services/schools.service';
-import { TestItem, TestQuestion } from '../../interfaces/course';
+import { TestItem, TestQuestion, TestAnswer, TestOptions, LabeledItem } from '../../interfaces/course';
 import { QUESTION_TYPE_OPTIONS, QuestionType, toBackendQType } from '../../constants/question-types';
 import { urlFor } from '../../util';
 
@@ -19,7 +19,7 @@ export class TestViewComponent implements OnInit {
   loading = signal(true);
   test = signal<TestItem | null>(null);
   questions = signal<TestQuestion[]>([]);
-  answers = signal<Record<string, any>>({});
+  answers = signal<Record<string, TestAnswer>>({});
   creating = signal(false);
   createdMsg = signal('');
   canEdit = signal(false);
@@ -54,24 +54,32 @@ export class TestViewComponent implements OnInit {
   }
 
   // Answer helpers for template-safe updates
-  getAnswer(qid: string): any { return this.answers()[qid] }
-  setAnswer(qid: string, v: any) { this.answers.update(a => ({ ...a, [qid]: v })) }
+  getAnswer(qid: string): TestAnswer { return this.answers()[qid] ?? null }
+  setAnswer(qid: string, v: TestAnswer) { this.answers.update(a => ({ ...a, [qid]: v })) }
 
-  getBlankAnswer(qid: string, bid: string): any { const obj = this.answers()[qid] || {}; return obj[bid] ?? '' }
-  setBlankAnswer(qid: string, bid: string, v: any) { this.answers.update(a => ({ ...a, [qid]: { ...(a[qid]||{}), [bid]: v } })) }
+  getBlankAnswer(qid: string, bid: string): string { const obj = (this.answers()[qid] as Record<string, unknown>) || {}; const v = obj[bid]; return typeof v === 'string' ? v : '' }
+  setBlankAnswer(qid: string, bid: string, v: string) { this.answers.update(a => ({ ...a, [qid]: { ...(a[qid] as Record<string, unknown>||{}), [bid]: v } })) }
 
-  getMatchSelection(qid: string, leftId: string): any { const obj = this.answers()[qid] || {}; return obj[leftId] ?? '' }
-  setMatchAnswer(qid: string, leftId: string, rightId: string) { this.answers.update(a => ({ ...a, [qid]: { ...(a[qid]||{}), [leftId]: rightId } })) }
+  getMatchSelection(qid: string, leftId: string): string { const obj = (this.answers()[qid] as Record<string, unknown>) || {}; const v = obj[leftId]; return typeof v === 'string' ? v : '' }
+  setMatchAnswer(qid: string, leftId: string, rightId: string) { this.answers.update(a => ({ ...a, [qid]: { ...(a[qid] as Record<string, unknown>||{}), [leftId]: rightId } })) }
 
+  private getOptionItems(q: TestQuestion): LabeledItem[] {
+    const opt = (q.options as TestOptions | undefined) as unknown as { items?: unknown };
+    const raw = Array.isArray(opt?.items) ? (opt!.items as unknown[]) : [];
+    return raw.filter((x): x is LabeledItem => {
+      const o = x as { id?: unknown; label?: unknown };
+      return !!x && typeof o?.id === 'string' && typeof o?.label === 'string';
+    });
+  }
   getOrdering(q: TestQuestion): string[] {
     const cur = this.answers()[q.id];
-    if (Array.isArray(cur) && cur.length) return cur;
-    const items = (q as any).options?.items || [];
-    return items.map((i: any) => i.id);
+    if (Array.isArray(cur) && cur.length) return cur as string[];
+    const items = this.getOptionItems(q);
+    return items.map(i => i.id);
   }
   labelForOrdering(q: TestQuestion, itemId: string): string {
-    const items = (q as any).options?.items || [];
-    const it = items.find((x: any) => x.id === itemId);
+    const items = this.getOptionItems(q);
+    const it = items.find(x => x.id === itemId);
     return it?.label || itemId;
   }
   moveOrderingUp(q: TestQuestion, idx: number) {
@@ -84,8 +92,8 @@ export class TestViewComponent implements OnInit {
   }
 
   // Drag & Drop helpers
-  private getAllItemIds(q: TestQuestion): string[] { const items = (q as any).options?.items || []; return items.map((i: any) => i.id) }
-  private getPlacements(q: TestQuestion): Record<string, string[]> { const ans = this.getAnswer(q.id) || {}; return ans.placements || {} }
+  private getAllItemIds(q: TestQuestion): string[] { return this.getOptionItems(q).map(i => i.id) }
+  private getPlacements(q: TestQuestion): Record<string, string[]> { const ans = this.getAnswer(q.id) as any; const p = ans?.placements; return p && typeof p === 'object' ? (p as Record<string,string[]>) : {} }
   getUnassignedItems(q: TestQuestion): string[] {
     const all = this.getAllItemIds(q);
     const placements = this.getPlacements(q);
@@ -94,11 +102,11 @@ export class TestViewComponent implements OnInit {
     return all.filter(id => !assigned.has(id));
   }
   getBinItems(q: TestQuestion, binId: string): string[] { const placements = this.getPlacements(q); return (placements[binId] || []).slice() }
-  onDragStart(ev: DragEvent, itemId: string) { try { ev.dataTransfer?.setData('text/plain', itemId) } catch {} }
+  onDragStart(ev: DragEvent, itemId: string) { try { ev.dataTransfer?.setData('text/plain', itemId) } catch { /* no-op: DnD unavailable */ } }
   dropToUnassigned(q: TestQuestion, ev: DragEvent) {
     ev.preventDefault();
     const item = ev.dataTransfer?.getData('text/plain'); if (!item) return;
-    const ans = this.getAnswer(q.id) || {}; const placements = { ...(ans.placements || {}) } as Record<string,string[]>;
+    const ans = this.getAnswer(q.id) as any || {}; const placements = { ...((ans.placements || {}) as Record<string,string[]>) } as Record<string,string[]>;
     for (const b in placements) { placements[b] = (placements[b] || []).filter(x => x !== item) }
     placements['_unassigned'] = [...(placements['_unassigned'] || []), item];
     this.setAnswer(q.id, { placements });
@@ -106,7 +114,7 @@ export class TestViewComponent implements OnInit {
   dropToBin(q: TestQuestion, binId: string, ev: DragEvent) {
     ev.preventDefault();
     const item = ev.dataTransfer?.getData('text/plain'); if (!item) return;
-    const ans = this.getAnswer(q.id) || {}; const placements = { ...(ans.placements || {}) } as Record<string,string[]>;
+    const ans = this.getAnswer(q.id) as any || {}; const placements = { ...((ans.placements || {}) as Record<string,string[]>) } as Record<string,string[]>;
     for (const b in placements) { placements[b] = (placements[b] || []).filter(x => x !== item) }
     placements[binId] = [...(placements[binId] || []), item];
     this.setAnswer(q.id, { placements });
@@ -115,7 +123,7 @@ export class TestViewComponent implements OnInit {
   // MCQ multi-select toggle
   toggleMultiSelect(qid: string, key: string, checked: boolean) {
     const val = this.getAnswer(qid);
-    let arr: string[] = Array.isArray(val) ? [...val] : [];
+    const arr: string[] = Array.isArray(val) ? [...(val as string[])] : [];
     const idx = arr.indexOf(key);
     if (checked && idx < 0) arr.push(key);
     if (!checked && idx >= 0) arr.splice(idx, 1);
@@ -125,31 +133,33 @@ export class TestViewComponent implements OnInit {
   // Hotspot toggle
   toggleHotspot(qid: string, regionId: string) {
     const val = this.getAnswer(qid);
-    let arr: string[] = Array.isArray(val) ? [...val] : [];
+    const arr: string[] = Array.isArray(val) ? [...(val as string[])] : [];
     const idx = arr.indexOf(regionId);
     if (idx >= 0) arr.splice(idx, 1); else arr.push(regionId);
     this.setAnswer(qid, arr);
   }
 
-  private buildOptionsAndAnswer(): { options: any; answer: any } {
+  private buildOptionsAndAnswer(): { options: TestOptions | null; answer: TestAnswer } {
     // If manual JSON provided, prefer it
     try {
       const o = this.qOptionsJSON().trim();
       const a = this.qAnswerJSON().trim();
       if (o || a) {
-        return { options: o ? JSON.parse(o) : null, answer: a ? JSON.parse(a) : null };
+        return { options: o ? JSON.parse(o) as TestOptions : null, answer: a ? JSON.parse(a) as TestAnswer : null };
       }
-    } catch {}
+    } catch { /* no-op: invalid JSON in authoring preview */ }
     const t = this.qType();
     if (t === 'multiple_choice' || t === 'multiple_select') {
       const lines = this.qChoicesText().split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      const choices = lines.map(line => {
+      const choices = lines.map((line, index) => {
         const m = line.match(/^([A-Za-z])\.?\s*(.*)$/);
-        if (m) return { key: m[1].toUpperCase(), label: m[2] };
-        return { key: String.fromCharCode(65 + choices.length), label: line } as any;
+        if (m) return { key: m[1].toUpperCase(), label: m[2] } as unknown as LabeledItem & { key: string };
+        return { key: String.fromCharCode(65 + index), label: line } as unknown as LabeledItem & { key: string };
       });
-      const options = { choices, allowMultiple: t === 'multiple_select' };
-      const answer = t === 'multiple_select' ? { keys: [] } : { key: choices[0]?.key };
+      const options = { choices, allowMultiple: t === 'multiple_select' } as TestOptions;
+      const first = choices[0] as unknown as { key?: string };
+      const firstKey = typeof first?.key === 'string' ? first.key : '';
+      const answer: TestAnswer = t === 'multiple_select' ? { keys: [] } : { key: firstKey };
       return { options, answer };
     }
     if (t === 'true_false') {

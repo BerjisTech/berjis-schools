@@ -3,8 +3,8 @@
   <div *ngIf="forbidden" class="text-red-700">You are not a platform moderator.</div>
   <div *ngIf="!forbidden" class="grid gap-4">
     <div class="flex gap-2 items-end">
-      <label class="text-sm">Status</label>
-      <select [(ngModel)]="status" name="status" class="border border-gray-300 rounded-md px-3 py-2">
+      <label class="text-sm" for="schoolStatus">Status</label>
+      <select id="schoolStatus" [(ngModel)]="status" name="status" class="border border-gray-300 rounded-md px-3 py-2">
         <option value="pending">Pending</option>
         <option value="approved">Approved</option>
         <option value="rejected">Rejected</option>

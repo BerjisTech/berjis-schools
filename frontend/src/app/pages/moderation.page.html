@@ -5,8 +5,8 @@
       <h3 class="mt-0 font-semibold">Report Content or User</h3>
       <form class="grid gap-3" (ngSubmit)="report()">
         <div>
-          <label class="block text-sm mb-1">Target Type</label>
-          <select [(ngModel)]="targetType" name="targetType" class="w-full border border-gray-300 rounded-md px-3 py-2">
+          <label class="block text-sm mb-1" for="targetType">Target Type</label>
+          <select id="targetType" [(ngModel)]="targetType" name="targetType" class="w-full border border-gray-300 rounded-md px-3 py-2">
             <option value="user">User</option>
             <option value="school">School</option>
             <option value="class">Class</option>
@@ -17,24 +17,24 @@
           </select>
         </div>
         <div *ngIf="targetType!=='other'">
-          <label class="block text-sm mb-1">Search {{ targetType | titlecase }}</label>
-          <input [(ngModel)]="query" name="query" (input)="search()" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Type to search" />
+          <label class="block text-sm mb-1" for="moderationQuery">Search {{ targetType | titlecase }}</label>
+          <input id="moderationQuery" [(ngModel)]="query" name="query" (input)="search()" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Type to search" />
           <ul *ngIf="results.length" class="mt-2 border border-gray-200 rounded-md divide-y divide-gray-100">
-            <li *ngFor="let r of results" (click)="select(r)" class="px-3 py-2 cursor-pointer hover:bg-gray-50">{{ r.label }}</li>
+            <li *ngFor="let r of results" (click)="select(r)" (keyup.enter)="select(r)" tabindex="0" role="button" class="px-3 py-2 cursor-pointer hover:bg-gray-50">{{ r.label }}</li>
           </ul>
           <div *ngIf="selectedLabel" class="mt-2 text-sm text-gray-700">Selected: {{ selectedLabel }}</div>
         </div>
         <div *ngIf="targetType==='other'">
-          <label class="block text-sm mb-1">Target ID</label>
-          <input [(ngModel)]="targetId" name="targetId" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Enter target reference" />
+          <label class="block text-sm mb-1" for="targetId">Target ID</label>
+          <input id="targetId" [(ngModel)]="targetId" name="targetId" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Enter target reference" />
         </div>
         <div>
-          <label class="block text-sm mb-1">Reason</label>
-          <input [(ngModel)]="reason" name="reason" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Short reason" />
+          <label class="block text-sm mb-1" for="reason">Reason</label>
+          <input id="reason" [(ngModel)]="reason" name="reason" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Short reason" />
         </div>
         <div>
-          <label class="block text-sm mb-1">Details</label>
-          <textarea [(ngModel)]="details" name="details" rows="3" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Optional details"></textarea>
+          <label class="block text-sm mb-1" for="details">Details</label>
+          <textarea id="details" [(ngModel)]="details" name="details" rows="3" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Optional details"></textarea>
         </div>
         <div class="flex items-center gap-3">
           <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md" [disabled]="savingReport">{{ savingReport ? 'Submitting.' : 'Submit Report' }}</button>
@@ -47,10 +47,10 @@
       <h3 class="mt-0 font-semibold">My Blocked Users</h3>
       <div class="grid gap-2">
         <div>
-          <label class="block text-sm mb-1">Search User to Block</label>
-          <input [(ngModel)]="blockQuery" name="blockQuery" (input)="searchBlock()" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Type a name" />
+          <label class="block text-sm mb-1" for="blockQuery">Search User to Block</label>
+          <input id="blockQuery" [(ngModel)]="blockQuery" name="blockQuery" (input)="searchBlock()" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Type a name" />
           <ul *ngIf="blockResults.length" class="mt-2 border border-gray-200 rounded-md divide-y divide-gray-100">
-            <li *ngFor="let r of blockResults" (click)="selectBlock(r)" class="px-3 py-2 cursor-pointer hover:bg-gray-50">{{ r.label }}</li>
+            <li *ngFor="let r of blockResults" (click)="selectBlock(r)" (keyup.enter)="selectBlock(r)" tabindex="0" role="button" class="px-3 py-2 cursor-pointer hover:bg-gray-50">{{ r.label }}</li>
           </ul>
           <div *ngIf="blockSelectedLabel" class="mt-2 text-sm text-gray-700">Selected: {{ blockSelectedLabel }}</div>
           <div class="mt-2 flex gap-2">
@@ -60,7 +60,7 @@
         </div>
       </div>
       <ul class="mt-3 list-disc pl-5">
-        <li *ngFor="let b of blocks" class="flex items-center gap-3"><span class="flex-1">{{ b.blockedUserId }}</span><button (click)="unblock(b.blockedUserId)" class="text-sm text-blue-700 hover:underline">Unblock</button></li>
+        <li *ngFor="let b of blocks" class="flex items-center gap-3"><span class="flex-1">{{ b.blockedUserId }}</span><button (click)="unblock(b.blockedUserId)" (keyup.enter)="unblock(b.blockedUserId)" tabindex="0" class="text-sm text-blue-700 hover:underline" role="button">Unblock</button></li>
       </ul>
     </div>
   </div>

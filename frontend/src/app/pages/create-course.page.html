@@ -4,28 +4,28 @@
   <div class="space-y-3 p-4 border rounded">
     <div class="grid gap-3 md:grid-cols-2">
       <div>
-        <label class="block text-sm mb-1">Title</label>
-        <input [(ngModel)]="title" name="title" class="w-full border rounded px-3 py-2" />
+        <label class="block text-sm mb-1" for="courseTitle">Title</label>
+        <input id="courseTitle" [(ngModel)]="title" name="title" class="w-full border rounded px-3 py-2" />
       </div>
       <div>
-        <label class="block text-sm mb-1">Pricing</label>
+        <label class="block text-sm mb-1" for="priceCents">Pricing</label>
         <div class="flex items-center gap-3">
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" [(ngModel)]="isPaid" name="isPaid"/> Paid</label>
-          <input type="number" class="w-40 border rounded px-3 py-2" [(ngModel)]="priceCents" name="priceCents" [disabled]="!isPaid" placeholder="Price (cents)" />
+          <input id="priceCents" type="number" class="w-40 border rounded px-3 py-2" [(ngModel)]="priceCents" name="priceCents" [disabled]="!isPaid" placeholder="Price (cents)" />
         </div>
       </div>
       <div>
-        <label class="block text-sm mb-1">Visibility</label>
-        <select [(ngModel)]="visibility" name="visibility" class="w-full border rounded px-3 py-2 text-sm">
-          <option value="public">Public – discoverable by everyone</option>
-          <option value="private">Private – invite-only, not listed</option>
-          <option value="school">School-only – visible to your school community</option>
+        <label class="block text-sm mb-1" for="visibility">Visibility</label>
+        <select id="visibility" [(ngModel)]="visibility" name="visibility" class="w-full border rounded px-3 py-2 text-sm">
+          <option value="public">Public - discoverable by everyone</option>
+          <option value="private">Private - invite-only, not listed</option>
+          <option value="school">School-only - visible to your school community</option>
         </select>
       </div>
     </div>
     <div>
-      <label class="block text-sm mb-1">Description</label>
-      <textarea [(ngModel)]="description" name="description" rows="3" class="w-full border rounded px-3 py-2"></textarea>
+      <label class="block text-sm mb-1" for="courseDescription">Description</label>
+      <textarea id="courseDescription" [(ngModel)]="description" name="description" rows="3" class="w-full border rounded px-3 py-2"></textarea>
     </div>
     <div class="flex items-center gap-3">
       <button class="px-4 py-2 rounded bg-blue-600 text-white" (click)="createCourse()" [disabled]="creating">{{ creating ? 'Creating…' : 'Create Course' }}</button>
@@ -36,7 +36,8 @@
   <div *ngIf="createdCourseId" class="space-y-3 p-4 border rounded">
     <div class="font-semibold">Subjects</div>
     <div class="flex items-center gap-2">
-      <input [(ngModel)]="newSubjectTitle" name="newSubjectTitle" placeholder="New subject title" class="flex-1 border rounded px-3 py-2" />
+      <label class="sr-only" for="newSubjectTitle">New subject title</label>
+      <input id="newSubjectTitle" [(ngModel)]="newSubjectTitle" name="newSubjectTitle" placeholder="New subject title" class="flex-1 border rounded px-3 py-2" />
       <button class="px-3 py-2 rounded border" (click)="addSubject()">Add Subject</button>
     </div>
     <ul class="list-disc pl-6">

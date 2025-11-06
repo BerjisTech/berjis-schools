@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { TPipe } from '../t.pipe';
 import { AuthedUserProfile, fetchUserProfile, urlFor } from '../../app/util';
 
 type StepSlug = 'info' | 'verification' | 'education' | 'teaching' | 'media' | 'consents' | 'payout' | 'review';
@@ -85,7 +86,7 @@ const FALLBACK_TIMEZONES = [
   'Australia/Sydney',
 ];
 
-function buildCountries(): { code: string; name: string }[] {
+function buildCountries(): Array<{ code: string; name: string }> {
   try {
     const supported = typeof (Intl as any).supportedValuesOf === 'function'
       ? (Intl as any).supportedValuesOf('region') as string[]
@@ -197,12 +198,12 @@ const UPLOAD_FIELD_OPTIONS: Record<string, UploadOption> = {
   },
 };
 
-function mergeWithDefaults<T extends Record<string, any>>(defaults: T, source: any): T {
-  const result: Record<string, any> = { ...defaults };
+function mergeWithDefaults<T extends Record<string, unknown>>(defaults: T, source: unknown): T {
+  const result: Record<string, unknown> = { ...defaults };
   if (!source || typeof source !== 'object') {
     return result as T;
   }
-  const incoming = source as Record<string, any>;
+  const incoming = source as Record<string, unknown>;
   for (const [key, defaultValue] of Object.entries(defaults)) {
     const value = incoming[key];
     if (typeof defaultValue === 'boolean') {
@@ -219,7 +220,7 @@ function mergeWithDefaults<T extends Record<string, any>>(defaults: T, source: a
 @Component({
   selector: 'app-become-tutor-page',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, TPipe],
   templateUrl: './become-tutor.page.html'
 })
 export class BecomeTutorPage implements OnInit, OnDestroy {
@@ -535,7 +536,7 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
   private extractPhone(profile: AuthedUserProfile | null): string {
     if (!profile) return '';
     const prefs: any = profile.preferences ?? {};
-    const candidates: Array<unknown> = [
+    const candidates: unknown[] = [
       (profile as any)?.phone,
       prefs?.contactPhone,
       prefs?.contact?.phone,
@@ -742,7 +743,7 @@ export class BecomeTutorPage implements OnInit, OnDestroy {
   }
 
   private clearDraftSnapshot(): void {
-    try { localStorage.removeItem(this.draftStorageKey) } catch {}
+    try { localStorage.removeItem(this.draftStorageKey) } catch { /* no-op */ }
     this.localDraftLoaded = false;
   }
 

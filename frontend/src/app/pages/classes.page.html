@@ -1,7 +1,10 @@
 <div class="p-4 space-y-3">
   <div class="flex items-center justify-between">
     <h2 class="mt-0 text-lg font-semibold">Courses</h2>
-    <a routerLink="/course/create" class="px-3 py-2 rounded bg-gray-900 text-white">Create Course</a>
+    <div class="flex items-center gap-2">
+      <input class="border rounded px-2 py-1 text-sm" placeholder="Promo code" (change)="onCouponChange($event)" />
+      <a routerLink="/course/create" class="px-3 py-2 rounded bg-gray-900 text-white">Create Course</a>
+    </div>
   </div>
   <div *ngIf="loading">Loading…</div>
   <div *ngIf="!loading && courses.length===0" class="text-sm text-gray-600">No courses yet.</div>
@@ -12,7 +15,8 @@
         <div class="text-xs text-gray-600">{{ c.description }}</div>
       </div>
       <div class="flex items-center gap-3">
-        <div *ngIf="c.isPaid" class="text-sm">KES {{ (c.priceCents ?? 0) / 100 | number:'1.2-2' }}</div>
+        <div *ngIf="c.isPaid" class="text-sm">{{ (c.priceCents ?? 0) / 100 | currency:'USD' }}</div>
+        <button *ngIf="c.isPaid && !c.isEnrolled" class="px-3 py-1 rounded bg-blue-600 text-white" (click)="buy(c)">Buy</button>
         <a [routerLink]="['/course', c.id]" class="px-3 py-1 rounded border">Open</a>
       </div>
     </div>

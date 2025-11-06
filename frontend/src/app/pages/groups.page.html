@@ -1,11 +1,12 @@
 <div class="p-4 md:p-8 grid md:grid-cols-12 gap-6">
   <div class="md:col-span-4 space-y-3">
     <div class="flex gap-2">
-      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="New group title" [ngModel]="newTitle()" (ngModelChange)="newTitle.set($event)" />
+      <label class="sr-only" for="newGroupTitle">New group title</label>
+      <input id="newGroupTitle" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="New group title" [ngModel]="newTitle()" (ngModelChange)="newTitle.set($event)" />
       <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="create()">Create</button>
     </div>
     <ul class="space-y-1 text-sm">
-      <li *ngFor="let g of groups()" class="border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer" (click)="open(g.id)">{{ g.title }}</li>
+      <li *ngFor="let g of groups()" class="border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer" role="button" tabindex="0" (click)="open(g.id)" (keyup.enter)="open(g.id)">{{ g.title }}</li>
     </ul>
   </div>
   <div class="md:col-span-8 space-y-4" *ngIf="selectedId()">
@@ -30,9 +31,13 @@
       </div>
     </div>
     <div class="flex gap-2">
-      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Message group" [ngModel]="compose()" (ngModelChange)="compose.set($event)" />
+      <label class="sr-only" for="groupMessage">Message group</label>
+      <input id="groupMessage" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Message group" [ngModel]="compose()" (ngModelChange)="compose.set($event)" />
       <button class="px-3 py-2 rounded-lg border text-sm" (click)="startCall()">Start Call</button>
       <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="send()">Send</button>
+    </div>
+    <div class="mt-6">
+      <app-resources-panel *ngIf="selectedId()" [scope]="'group'" [scopeId]="selectedId()!" [canManage]="true" [quickPrincipal]="{ type: 'group', id: selectedId()!, label: 'Group' }"></app-resources-panel>
     </div>
   </div>
 </div>

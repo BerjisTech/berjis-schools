@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { SchoolsService } from '../services/schools.service';
+type JSONObject = Record<string, unknown>;
 
 @Component({
   selector: 'app-search-page',
@@ -13,13 +14,13 @@ import { SchoolsService } from '../services/schools.service';
 export class SearchPage implements OnInit {
   q = '';
   loading = false;
-  users: { userId: string; displayName?: string | null }[] = [];
-  tutors: { userId: string; bio?: string }[] = [];
-  schools: { id: string; name: string }[] = [];
-  classes: { id: string; title: string }[] = [];
-  subjects: { id: string; title: string }[] = [];
-  lessons: { id: string; title: string; classId: string }[] = [];
-  tests: { id: string; title: string; classId?: string }[] = [];
+  users: Array<{ userId: string; displayName?: string | null }> = [];
+  tutors: Array<{ userId: string; bio?: string }> = [];
+  schools: Array<{ id: string; name: string }> = [];
+  classes: Array<{ id: string; title: string }> = [];
+  subjects: Array<{ id: string; title: string }> = [];
+  lessons: Array<{ id: string; title: string; classId: string }> = [];
+  tests: Array<{ id: string; title: string; classId?: string }> = [];
 
   constructor(private route: ActivatedRoute, private svc: SchoolsService) {}
 
@@ -43,12 +44,12 @@ export class SearchPage implements OnInit {
         this.svc.search('test', q).catch(() => []),
         this.svc.searchTutors(q).catch(() => []),
       ]);
-      this.users = users.map((u: any) => ({ userId: u.userId, displayName: u.displayName ?? null }));
-      this.schools = schools.map((s: any) => ({ id: s.id, name: s.name }));
-      this.classes = classes.map((c: any) => ({ id: c.id, title: c.title }));
-      this.subjects = subjects.map((s: any) => ({ id: s.id, title: s.title }));
-      this.lessons = lessons.map((l: any) => ({ id: l.id, title: l.title, classId: l.classId }));
-      this.tests = tests.map((t: any) => ({ id: t.id, title: t.title, classId: t.classId }));
+      this.users = users.map((u: JSONObject) => ({ userId: String(u.userId ?? ''), displayName: (u.displayName as string | undefined) ?? null }));
+      this.schools = schools.map((s: JSONObject) => ({ id: String(s.id ?? ''), name: String(s.name ?? '') }));
+      this.classes = classes.map((c: JSONObject) => ({ id: String(c.id ?? ''), title: String(c.title ?? '') }));
+      this.subjects = subjects.map((s: JSONObject) => ({ id: String(s.id ?? ''), title: String(s.title ?? '') }));
+      this.lessons = lessons.map((l: JSONObject) => ({ id: String(l.id ?? ''), title: String(l.title ?? ''), classId: String(l.classId ?? '') }));
+      this.tests = tests.map((t: JSONObject) => ({ id: String(t.id ?? ''), title: String(t.title ?? ''), classId: t.classId ? String(t.classId) : undefined }));
       this.tutors = tutors;
     } finally {
       this.loading = false;

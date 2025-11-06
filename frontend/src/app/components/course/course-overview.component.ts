@@ -92,6 +92,8 @@ export class CourseOverviewComponent implements OnInit {
 
   toast = signal<{ kind: 'success' | 'error'; text: string } | null>(null);
 
+  // Class-level resources handled by reusable panel now
+
   totalMinutes = computed(() => {
     const lbs = this.lessonsBySubject();
     let sum = 0;
@@ -176,11 +178,11 @@ export class CourseOverviewComponent implements OnInit {
     }
   }
 
-  displayedItemsForSubject(subjectId: string): { kind: 'lesson' | 'test'; lesson?: Lesson; test?: TestItem }[] {
+  displayedItemsForSubject(subjectId: string): Array<{ kind: 'lesson' | 'test'; lesson?: Lesson; test?: TestItem }> {
     const placement = this.placement();
     const lessons = this.lessonsBySubject()[subjectId] ?? [];
     const subjectTests = this.testsBySubject()[subjectId] ?? [];
-    const items: { kind: 'lesson' | 'test'; lesson?: Lesson; test?: TestItem }[] = [];
+    const items: Array<{ kind: 'lesson' | 'test'; lesson?: Lesson; test?: TestItem }> = [];
     const lessonTests = (lid: string) => this.testsByLesson()[lid] ?? [];
 
     if (placement.kind === 'after_each_lesson') {
@@ -235,10 +237,24 @@ export class CourseOverviewComponent implements OnInit {
       await this.svc.enrollInCourse(`${c.id}`);
       this.course.update(curr => (curr ? { ...curr, isEnrolled: true } : curr));
       this.toast.set({ kind: 'success', text: 'You are enrolled in this course.' });
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to enroll right now.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to enroll right now.';
+      this.toast.set({ kind: 'error', text: msg });
     } finally {
       this.enrolling.set(false);
+    }
+  }
+
+  async buy() {
+    const c = this.course();
+    if (!c) return;
+    try {
+      const result = await this.svc.checkout(`${c.id}`, { gateway: 'stripe', mode: 'hosted', currency: 'USD', successUrl: window.location.href });
+      if (result?.url) {
+        window.location.href = result.url;
+      }
+    } catch (e) {
+      this.toast.set({ kind: 'error', text: 'Unable to start checkout.' });
     }
   }
 
@@ -250,8 +266,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Course archived.' });
       await this.router.navigate(['/courses/mine']);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive course.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to archive course.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -263,8 +280,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Course deleted.' });
       await this.router.navigate(['/courses/mine']);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete course.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to delete course.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -294,8 +312,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Subject archived.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive subject.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to archive subject.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -307,8 +326,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Subject deleted.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete subject.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to delete subject.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -320,8 +340,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Lesson archived.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive lesson.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to archive lesson.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -333,8 +354,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Lesson deleted.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete lesson.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to delete lesson.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -346,8 +368,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Assessment archived.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to archive assessment.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to archive assessment.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -359,8 +382,9 @@ export class CourseOverviewComponent implements OnInit {
       if (!ok) throw new Error('Request failed');
       this.toast.set({ kind: 'success', text: 'Assessment deleted.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Unable to delete assessment.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unable to delete assessment.';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -391,8 +415,9 @@ export class CourseOverviewComponent implements OnInit {
       this.subjectDescription.set('');
       this.toast.set({ kind: 'success', text: 'Subject added.' });
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Could not add subject.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Could not add subject.';
+      this.toast.set({ kind: 'error', text: msg });
     } finally {
       this.creatingSubject.set(false);
     }
@@ -426,8 +451,9 @@ export class CourseOverviewComponent implements OnInit {
       this.toast.set({ kind: 'success', text: 'Lesson created.' });
       this.cancelLessonForm();
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Could not create lesson.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Could not create lesson.';
+      this.toast.set({ kind: 'error', text: msg });
     } finally {
       this.creatingLesson.set(false);
     }
@@ -459,15 +485,16 @@ export class CourseOverviewComponent implements OnInit {
       this.toast.set({ kind: 'success', text: 'Assessment created.' });
       this.cancelTestForm();
       await this.loadData(this.courseId);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Could not create assessment.' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Could not create assessment.';
+      this.toast.set({ kind: 'error', text: msg });
     } finally {
       this.creatingTest.set(false);
     }
   }
 
-  private buildLessonContent(form: LessonFormState): any {
-    const base: any = {};
+  private buildLessonContent(form: LessonFormState): Record<string, unknown> | null {
+    const base: Record<string, unknown> = {};
     if (form.description.trim()) {
       base.description = form.description.trim();
     }
@@ -525,4 +552,6 @@ export class CourseOverviewComponent implements OnInit {
   dismissToast() {
     this.toast.set(null);
   }
+
+  // (no local helpers; panel handles resources)
 }

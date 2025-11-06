@@ -30,6 +30,17 @@ export class LessonsPage implements OnInit {
   myCourses = signal<CourseLessons[]>([]);
   exploreCourses = signal<Course[]>([]);
 
+  // Resources open state per lesson
+  resourcesOpen = signal<Record<string, boolean>>({});
+  // Share modal state
+  shareOpen = signal(false);
+  shareForResource = signal<string | null>(null);
+  shareUserId = signal('');
+  shareRole = signal<'owner'|'editor'|'commenter'|'viewer'>('viewer');
+  shareRows = signal<Array<{ id: string; principalType: 'user'|'class'|'group'|'school'; principalId: string; role: 'owner'|'editor'|'commenter'|'viewer'; createdBy?: string; createdAt?: string }>>([]);
+  shareQuery = signal('');
+  shareSuggestions = signal<Array<{ userId: string; displayName?: string }>>([]);
+
   totalLessons = computed(() => {
     return this.myCourses().reduce((sum, entry) => {
       for (const subject of entry.subjects) sum += subject.lessons.length;
@@ -103,4 +114,12 @@ export class LessonsPage implements OnInit {
       this.loading.set(false);
     }
   }
+
+  async toggleResources(lessonId: string) { const cur = { ...this.resourcesOpen() }; cur[lessonId] = !cur[lessonId]; this.resourcesOpen.set(cur); }
+  openShare(resourceId: string){ this.shareForResource.set(resourceId); this.shareOpen.set(true); this.loadAcl(resourceId); }
+  async addUserShare(){ const rid=this.shareForResource(); const uid=this.shareUserId().trim(); if(!rid||!uid) return; const role=this.shareRole(); await this.svc.grantResourceRole(rid, 'user', uid, role); this.shareUserId.set(''); }
+  private async loadAcl(resourceId: string){ try { this.shareRows.set(await this.svc.listResourceAcl(resourceId)); } catch { this.shareRows.set([]); } }
+  async revokeShare(principalType: 'user'|'class'|'group'|'school', principalId: string){ const rid=this.shareForResource(); if(!rid) return; await this.svc.revokeResourceRole(rid, principalType, principalId); await this.loadAcl(rid); }
+  async onShareQueryChange(q: string){ this.shareQuery.set(q); if ((q||'').trim().length < 2) { this.shareSuggestions.set([]); return; } this.shareSuggestions.set(await this.svc.searchUsers(q)); }
+  pickSuggestion(u: { userId: string; displayName?: string }){ this.shareUserId.set(u.userId); this.shareQuery.set(u.displayName || u.userId); this.shareSuggestions.set([]); }
 }

@@ -19,6 +19,8 @@ export class GroupsPage implements OnInit {
   newTitle = signal('');
   compose = signal('');
 
+  // Resources handled by reusable panel now
+
   constructor(private svc: SchoolsService, private route: ActivatedRoute) {}
 
   async ngOnInit() {
@@ -73,4 +75,6 @@ export class GroupsPage implements OnInit {
     await this.svc.unbanGroupMember(id, uid);
     this.members.set(await this.svc.listGroupMembers(id));
   }
+
+  // Resources panel handles attach/share
 }

@@ -21,9 +21,9 @@
           <div class="text-xs text-gray-500">Lead tutor: {{ c.tutorUserId || 'Unknown' }}</div>
         </div>
       </div>
-    </div>
+  </div>
 
-    <div *ngIf="toast() as t" class="flex items-center justify-between rounded-lg border px-4 py-3"
+  <div *ngIf="toast() as t" class="flex items-center justify-between rounded-lg border px-4 py-3"
       [class.bg-green-50]="t.kind === 'success'" [class.border-green-200]="t.kind === 'success'" [class.text-green-800]="t.kind === 'success'"
       [class.bg-red-50]="t.kind === 'error'" [class.border-red-200]="t.kind === 'error'" [class.text-red-700]="t.kind === 'error'">
       <span class="text-sm">{{ t.text }}</span>
@@ -38,7 +38,56 @@
         <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'after_every_n_lessons', n: 5})">After every 5 lessons</button>
         <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'random', count: 3})">Random</button>
       </div>
+  </section>
+
+    <!-- Class Resources Panel -->
+    <section class="border border-sky-200 rounded-2xl bg-sky-50/50 p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-slate-900">Class Resources</h2>
+        <span class="text-xs text-slate-500">Materials shared with everyone in this class</span>
+      </div>
+      <app-resources-panel [scope]="'class'" [scopeId]="c.id" [canManage]="isOwner()" [quickPrincipal]="{ type: 'class', id: c.id, label: 'Class' }"></app-resources-panel>
     </section>
+
+    <!-- Share Modal for class resources -->
+    <!-- Deprecated local share modal; handled by app-resources-panel -->
+    <div *ngIf="false" class="fixed inset-0 z-[70000] flex items-center justify-center bg-black/30">
+      <div class="w-[520px] max-w-[95vw] rounded-xl bg-white p-4 shadow-xl">
+        <div class="flex items-center justify-between">
+          <h3 class="text-base font-semibold">Share Resource</h3>
+          <button class="text-slate-500" (click)="shareOpen.set(false)">✕</button>
+        </div>
+        <div class="mt-3 space-y-2">
+          <div class="flex gap-2 relative">
+            <input class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm" placeholder="Search user by name, email, or ID" [ngModel]="shareQuery()" (ngModelChange)="onShareQueryChange($event)" />
+            <select class="rounded border border-slate-300 px-2 py-1 text-sm" [ngModel]="shareRole()" (ngModelChange)="shareRole.set($event)">
+              <option value="viewer">Viewer</option>
+              <option value="commenter">Commenter</option>
+              <option value="editor">Editor</option>
+              <option value="owner">Owner</option>
+            </select>
+            <button class="rounded bg-blue-700 px-3 py-1 text-sm font-medium text-white" (click)="addUserShare()">Add</button>
+            <div *ngIf="shareSuggestions().length" class="absolute left-0 right-28 top-full z-[80000] mt-1 rounded border bg-white shadow">
+              <button *ngFor="let u of shareSuggestions()" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50" (click)="pickSuggestion(u)">
+                {{ u.displayName || u.userId }}
+                <span class="text-xs text-slate-500">{{ u.userId }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="text-xs text-slate-500">Use the quick Class buttons to set a default role for all class members.</div>
+          <div class="mt-3 max-h-[240px] overflow-y-auto rounded border">
+            <div *ngFor="let row of shareRows()" class="flex items-center justify-between border-b px-3 py-2 text-sm">
+              <div>
+                <div class="font-medium">{{ row.principalType }}: {{ row.principalId }}</div>
+                <div class="text-xs text-slate-500">{{ row.role | titlecase }} • {{ row.createdAt | date:'short' }}</div>
+              </div>
+              <button class="rounded border px-2 py-1 text-xs" (click)="revokeShare(row.principalType, row.principalId)">Revoke</button>
+            </div>
+            <div *ngIf="!shareRows().length" class="px-3 py-2 text-xs text-slate-500">No explicit shares yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <section *ngIf="isOwner()" class="border border-emerald-200 rounded-2xl bg-emerald-50/60 p-5 space-y-4">
       <div>
@@ -89,15 +138,17 @@
             </div>
             <div class="grid md:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonTitle-' + s.id">Title</label>
                 <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                   [(ngModel)]="lessonFormState.title"
+                  id="lessonTitle-{{s.id}}"
                   name="lessonTitle-{{s.id}}" />
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Lesson type</label>
+                <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonType-' + s.id">Lesson type</label>
                 <select class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                   [(ngModel)]="lessonFormState.type"
+                  id="lessonType-{{s.id}}"
                   name="lessonType-{{s.id}}">
                   <option value="text">Rich text / article</option>
                   <option value="audio">Audio session</option>
@@ -116,79 +167,89 @@
 
             <div class="space-y-3">
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Lesson description</label>
+                <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonDescription-' + s.id">Lesson description</label>
                 <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="2"
-                  [(ngModel)]="lessonFormState.description" name="lessonDescription-{{s.id}}" placeholder="What outcomes will learners achieve?"></textarea>
+                  [(ngModel)]="lessonFormState.description" id="lessonDescription-{{s.id}}" name="lessonDescription-{{s.id}}" placeholder="What outcomes will learners achieve?"></textarea>
               </div>
               <div [ngSwitch]="lessonFormState.type">
                 <div *ngSwitchCase="'text'">
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Lesson body (HTML or Markdown)</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonText-' + s.id">Lesson body (HTML or Markdown)</label>
                   <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="4"
                     [(ngModel)]="lessonFormState.textHtml"
+                    id="lessonText-{{s.id}}"
                     name="lessonText-{{s.id}}" placeholder="<p>Welcome...</p>"></textarea>
               </div>
               <div *ngSwitchCase="'audio'" class="grid md:grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Audio URL</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonAudioUrl-' + s.id">Audio URL</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                     [(ngModel)]="lessonFormState.audioUrl"
+                    id="lessonAudioUrl-{{s.id}}"
                     name="lessonAudioUrl-{{s.id}}" placeholder="https://..." />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Duration (seconds)</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonAudioDuration-' + s.id">Duration (seconds)</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="number"
                     [(ngModel)]="lessonFormState.audioDuration"
+                    id="lessonAudioDuration-{{s.id}}"
                     name="lessonAudioDuration-{{s.id}}" />
                 </div>
               </div>
               <div *ngSwitchCase="'video'" class="grid md:grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Video URL</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonVideoUrl-' + s.id">Video URL</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                     [(ngModel)]="lessonFormState.videoUrl"
+                    id="lessonVideoUrl-{{s.id}}"
                     name="lessonVideoUrl-{{s.id}}" placeholder="https://..." />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Duration (seconds)</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonVideoDuration-' + s.id">Duration (seconds)</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="number"
                     [(ngModel)]="lessonFormState.videoDuration"
+                    id="lessonVideoDuration-{{s.id}}"
                     name="lessonVideoDuration-{{s.id}}" />
                 </div>
               </div>
               <div *ngSwitchCase="'live'" class="grid md:grid-cols-3 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Mode</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonLiveMode-' + s.id">Mode</label>
                   <select class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                     [(ngModel)]="lessonFormState.liveMode"
+                    id="lessonLiveMode-{{s.id}}"
                     name="lessonLiveMode-{{s.id}}">
                     <option value="one_on_one">One-on-one</option>
                     <option value="group">Interactive group</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Starts at</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonLiveStart-' + s.id">Starts at</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="datetime-local"
                     [(ngModel)]="lessonFormState.liveStartsAt"
+                    id="lessonLiveStart-{{s.id}}"
                     name="lessonLiveStart-{{s.id}}" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Ends at</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonLiveEnd-' + s.id">Ends at</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" type="datetime-local"
                     [(ngModel)]="lessonFormState.liveEndsAt"
+                    id="lessonLiveEnd-{{s.id}}"
                     name="lessonLiveEnd-{{s.id}}" />
                 </div>
               </div>
               <div *ngSwitchCase="'simulation'" class="space-y-3">
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Sandbox URL</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonSimUrl-' + s.id">Sandbox URL</label>
                   <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                     [(ngModel)]="lessonFormState.simulationUrl"
+                    id="lessonSimUrl-{{s.id}}"
                     name="lessonSimUrl-{{s.id}}" placeholder="https://codesandbox.io/..."/>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Instructions</label>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonSimInstructions-' + s.id">Instructions</label>
                   <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="3"
                     [(ngModel)]="lessonFormState.simulationInstructions"
+                    id="lessonSimInstructions-{{s.id}}"
                     name="lessonSimInstructions-{{s.id}}" placeholder="Explain how learners should use the playground."></textarea>
                 </div>
               </div>
@@ -209,15 +270,17 @@
             </div>
             <div class="grid md:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-medium text-amber-700 mb-1">Title</label>
+                <label class="block text-xs font-medium text-amber-700 mb-1" [attr.for]="'testTitle-' + s.id">Title</label>
                 <input class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm"
                   [(ngModel)]="testFormState.title"
+                  id="testTitle-{{s.id}}"
                   name="testTitle-{{s.id}}" />
               </div>
               <div>
-                <label class="block text-xs font-medium text-amber-700 mb-1">Visibility</label>
+                <label class="block text-xs font-medium text-amber-700 mb-1" [attr.for]="'testVisibility-' + s.id">Visibility</label>
                 <select class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm"
                   [(ngModel)]="testFormState.visibility"
+                  id="testVisibility-{{s.id}}"
                   name="testVisibility-{{s.id}}">
                   <option value="private">Private to enrolled learners</option>
                   <option value="public">Public practice</option>
@@ -225,9 +288,10 @@
               </div>
             </div>
             <div>
-              <label class="block text-xs font-medium text-amber-700 mb-1">Description</label>
+              <label class="block text-xs font-medium text-amber-700 mb-1" [attr.for]="'testDescription-' + s.id">Description</label>
               <textarea class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm" rows="3"
                 [(ngModel)]="testFormState.description"
+                id="testDescription-{{s.id}}"
                 name="testDescription-{{s.id}}" placeholder="How should learners prepare?"></textarea>
             </div>
             <div class="flex flex-wrap gap-3 text-xs">
@@ -245,9 +309,10 @@
               </label>
             </div>
             <div *ngIf="testFormState.scope === 'lesson'">
-              <label class="block text-xs font-medium text-amber-700 mb-1">Choose lesson</label>
+              <label class="block text-xs font-medium text-amber-700 mb-1" [attr.for]="'testLesson-' + s.id">Choose lesson</label>
               <select class="w-full border border-amber-300 rounded-md px-3 py-2 text-sm"
                 [(ngModel)]="testFormState.lessonId"
+                id="testLesson-{{s.id}}"
                 name="testLesson-{{s.id}}">
                 <option [ngValue]="null">Select lesson…</option>
                 <option *ngFor="let lesson of lessonsBySubject()[s.id] || []" [ngValue]="lesson.id">{{ lesson.title || lesson.name }}</option>

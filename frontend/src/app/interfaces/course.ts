@@ -46,7 +46,7 @@ export interface Lesson {
   description?: string;
   subjectId?: string;
   type?: 'text' | 'audio' | 'video' | 'live' | 'simulation';
-  content?: LessonContent | any;
+  content?: LessonContent;
   orderIndex?: number;
   isFree?: boolean;
   estimatedMinutes?: number;
@@ -109,13 +109,29 @@ export type TestPlacementStrategy =
 
 export type TestQuestionType = 'mcq'|'truefalse'|'short'|'long'|'essay'|'sentence'|'numeric'|'formula'|'code'|'match'|'ordering'|'fillblank'|'hotspot'|'dragdrop';
 
+// Common option/answer shapes by qtype (minimal but typed)
+export interface Choice { key: string; label: string }
+export interface LabeledItem { id: string; label: string }
+
+export type TestOptions =
+  | { choices: Choice[]; allowMultiple?: boolean }
+  | { tolerance?: number }
+  | { blanks: Array<{ id: string; kind: 'text' | 'number'; synonyms?: string[] }> }
+  | { left: LabeledItem[]; right: LabeledItem[] }
+  | { items: LabeledItem[] }
+  | { imageUrl?: string; width?: number; height?: number; regions?: Array<{ id: string; coords?: number[] }> }
+  | { bins?: LabeledItem[]; items: LabeledItem[] }
+  | Record<string, unknown>;
+
+export type TestAnswer = unknown;
+
 export interface TestQuestion {
   id: string;
   testId: string;
   qtype: TestQuestionType;
   prompt: string;
-  options?: any; // shape depends on qtype; mcq e.g. { choices: [{key:'A', label:'...'}, ...] }
-  answer?: any;  // canonical answer shape depends on qtype
+  options?: TestOptions; // typed minimal union per qtype
+  answer?: TestAnswer;  // typed minimal union per qtype
   points: number;
   orderIndex: number;
 }

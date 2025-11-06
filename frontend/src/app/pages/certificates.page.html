@@ -3,8 +3,8 @@
 
   <section class="space-y-3">
     <div class="flex items-center gap-3">
-      <label class="text-sm">Scope</label>
-      <select class="border border-slate-300 rounded-lg px-3 py-2 text-sm" [ngModel]="scope()" (ngModelChange)="scope.set($event); reload()">
+      <label class="text-sm" for="certScope">Scope</label>
+      <select id="certScope" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" [ngModel]="scope()" (ngModelChange)="scope.set($event); reload()">
         <option value="school">School</option>
         <option value="platform">Platform</option>
       </select>

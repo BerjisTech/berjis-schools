@@ -2,6 +2,8 @@ import { Injectable } from '@angular/core';
 import { urlFor, verifySession } from '../../app/util';
 import { Course, Lesson, Subject, TestItem, TestQuestion, UserRef } from '../interfaces/course';
 import { SchoolInvite, SchoolOverview, SchoolSummary } from '../interfaces/school';
+type JSONObject = Record<string, unknown>;
+type JSONRecord = Record<string, unknown>;
 
 interface ClassItemApi {
   id: string;
@@ -69,6 +71,22 @@ export class SchoolsService {
     return !!(await res.json())?.success;
   }
 
+  async checkout(courseId: string, opts: { gateway?: 'stripe'|'flutterwave'|'mpesa'; mode?: 'hosted'; currency?: string; successUrl?: string; cancelUrl?: string; phone?: string } = {}): Promise<{ url?: string; paymentId?: string } | null> {
+    const body: any = {
+      classId: courseId,
+      gateway: opts.gateway ?? (localStorage.getItem('payments.gateway') as any) ?? 'stripe',
+      currency: opts.currency ?? 'USD',
+      mode: opts.mode ?? 'hosted',
+      successUrl: opts.successUrl ?? window.location.origin + '/classes',
+      cancelUrl: opts.cancelUrl ?? window.location.href,
+      phone: opts.phone ?? localStorage.getItem('payments.mpesaPhone') ?? undefined
+    };
+    const res = await fetch(`${this.api}/v1/payments/checkout`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+
   async listSubjects(classId: string): Promise<Subject[]> {
     const res = await fetch(`${this.api}/v1/subjects?class_id=${encodeURIComponent(classId)}`, { credentials: 'include' });
     const j = await res.json();
@@ -100,7 +118,7 @@ export class SchoolsService {
   }
 
   // --- Gradebook ---
-  async getClassGradebook(classId: string): Promise<{ tests: { id: string; title: string; max: number }[]; students: any[] }> {
+  async getClassGradebook(classId: string): Promise<{ tests: Array<{ id: string; title: string; max: number }>; students: JSONRecord[] }> {
     const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/gradebook`, { credentials: 'include' });
     const j = await res.json();
     return j?.data ?? { tests: [], students: [] };
@@ -278,13 +296,13 @@ export class SchoolsService {
     return j?.data ?? [];
   }
 
-  async searchTutors(q: string): Promise<{ userId: string; bio?: string }[]> {
+  async searchTutors(q: string): Promise<Array<{ userId: string; bio?: string }>> {
     // Fallback: list approved tutors and filter client-side by userId (server has no q for tutors list)
     const url = new URL(`${this.api}/v1/tutors`);
     url.searchParams.set('status', 'approved');
     const res = await fetch(url.toString(), { credentials: 'include' });
     const j = await res.json();
-    const list: { user_id: string; bio?: string }[] = j?.data ?? [];
+    const list: Array<{ user_id: string; bio?: string }> = j?.data ?? [];
     const ql = q.trim().toLowerCase();
     if (!ql) return list.map(t => ({ userId: t.user_id, bio: t.bio }));
     return list.filter(t => t.user_id?.toLowerCase().includes(ql)).map(t => ({ userId: t.user_id, bio: t.bio }));
@@ -329,7 +347,7 @@ export class SchoolsService {
     return !!(await res.json())?.success;
   }
 
-  async getSchoolMembers(schoolId: string): Promise<{ userId: string; role: string; status: string }[]> {
+  async getSchoolMembers(schoolId: string): Promise<Array<{ userId: string; role: string; status: string }>> {
     const res = await fetch(`${this.api}/v1/schools/${schoolId}/members`, { credentials: 'include' });
     const j = await res.json();
     return (j?.data ?? []) as any[];
@@ -674,5 +692,59 @@ export class SchoolsService {
     const res = await fetch(`${this.api}/v1/appointments/my`, { credentials: 'include' });
     const j = await res.json();
     return j?.data ?? [];
+  }
+
+  // --- Resources (Docs/Sheets/Notes/PDF/Slides) ---
+  async listResources(scope: 'lesson'|'group'|'class'|'school'|'user', scopeId: string): Promise<Array<{ id: string; type: 'docs'|'sheets'|'notes'|'pdf'|'slides'; url: string; title?: string }>> {
+    const res = await fetch(`${this.api}/v1/resources?scope=${encodeURIComponent(scope)}&scope_id=${encodeURIComponent(scopeId)}`, { credentials: 'include' });
+    const j = await res.json();
+    const rows = (j?.data ?? []) as any[];
+    return rows.map(r => ({ id: r.id, type: r.type, url: r.url, title: r.title ?? undefined }));
+  }
+
+  async attachResource(input: {
+    mode: 'create'|'link';
+    type: 'docs'|'sheets'|'notes'|'pdf'|'slides';
+    title?: string;
+    url?: string;
+    externalId?: string;
+    scope: 'lesson'|'group'|'class'|'school'|'user';
+    scopeId: string;
+  }): Promise<{ id: string; type: string; url: string; title?: string } | null> {
+    const res = await fetch(`${this.api}/v1/resources`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+
+  async openResource(resourceId: string): Promise<void> {
+    // Let server issue SSO-verified redirect
+    const openUrl = `${this.api}/v1/resources/${encodeURIComponent(resourceId)}/open`;
+    window.open(openUrl, '_blank');
+  }
+
+  async grantResourceRole(resourceId: string, principalType: 'user'|'class'|'group'|'school', principalId: string, role: 'owner'|'editor'|'commenter'|'viewer'): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/resources/${encodeURIComponent(resourceId)}/acl`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ principalType, principalId, role }) });
+    return !!(await res.json())?.success;
+  }
+
+  async revokeResourceRole(resourceId: string, principalType: 'user'|'class'|'group'|'school', principalId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/resources/${encodeURIComponent(resourceId)}/acl?principal_type=${encodeURIComponent(principalType)}&principal_id=${encodeURIComponent(principalId)}`, { method: 'DELETE', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  async listResourceAcl(resourceId: string): Promise<Array<{ id: string; principalType: 'user'|'class'|'group'|'school'; principalId: string; role: 'owner'|'editor'|'commenter'|'viewer'; createdBy?: string; createdAt?: string }>> {
+    const res = await fetch(`${this.api}/v1/resources/${encodeURIComponent(resourceId)}/acl`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  // --- Search (users by name/email/uid) ---
+  async searchUsers(q: string, opts: { scope?: 'related'|'global' } = {}): Promise<Array<{ userId: string; displayName?: string }>> {
+    const params = new URLSearchParams({ type: 'user', q: q || '' });
+    if (opts.scope === 'global') params.set('scope', 'global');
+    const res = await fetch(`${urlFor('schools-api')}/v1/search?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    const rows = (j?.data ?? []) as any[];
+    return rows.map(r => ({ userId: r.userId || r.user_id, displayName: r.displayName || r.display_name }));
   }
 }

@@ -28,6 +28,9 @@ import { ClassAppointmentsPage } from './app/pages/class-appointments.page';
 import { CertificatesPage } from './app/pages/certificates.page';
 import { VerifyCertificatePage } from './app/pages/verify-certificate.page';
 import { MessagesPage } from './app/pages/messages.page';
+import { ReceiptPage } from './app/pages/receipt.page';
+import { PaymentSettingsPage } from './app/pages/payment-settings.page';
+import { MyPurchasesPage } from './app/pages/my-purchases.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -53,6 +56,9 @@ const routes: Routes = [
   { path: 'certificates', loadComponent: () => Promise.resolve(CertificatesPage), canActivate: [authGuard] },
   { path: 'verify', loadComponent: () => Promise.resolve(VerifyCertificatePage) },
   { path: 'messages', loadComponent: () => Promise.resolve(MessagesPage), canActivate: [authGuard] },
+  { path: 'purchases', loadComponent: () => Promise.resolve(MyPurchasesPage), canActivate: [authGuard] },
+  { path: 'receipt/:id', loadComponent: () => Promise.resolve(ReceiptPage), canActivate: [authGuard] },
+  { path: 'settings/payments', loadComponent: () => Promise.resolve(PaymentSettingsPage), canActivate: [authGuard] },
   { path: 'course/:id', component: CourseOverviewComponent },
   { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent, canActivate: [authGuard] },
   { path: 'course/:id/tests/:testId', component: TestViewComponent, canActivate: [authGuard] },

@@ -14,7 +14,7 @@ export type QuestionType =
   | 'ordering'
   | 'numeric';
 
-export const QUESTION_TYPE_OPTIONS: { value: QuestionType; label: string; group: 'Objective'|'Subjective'|'Interactive'|'Composite' }[] = [
+export const QUESTION_TYPE_OPTIONS: Array<{ value: QuestionType; label: string; group: 'Objective'|'Subjective'|'Interactive'|'Composite' }> = [
   { value: 'multiple_choice', label: 'Multiple Choice', group: 'Objective' },
   { value: 'multiple_select', label: 'Multiple Select', group: 'Objective' },
   { value: 'true_false', label: 'True / False', group: 'Objective' },
@@ -71,4 +71,3 @@ export function fromBackendQType(q: string): QuestionType | undefined {
     default: return undefined;
   }
 }
-

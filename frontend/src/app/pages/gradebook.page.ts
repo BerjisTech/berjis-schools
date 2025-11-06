@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { SchoolsService } from '../services/schools.service';
+import { JSONRecord } from '../types/json';
 
 @Component({
   selector: 'app-gradebook',
@@ -11,10 +12,10 @@ import { SchoolsService } from '../services/schools.service';
   templateUrl: './gradebook.page.html'
 })
 export class GradebookPage implements OnInit {
-  classes = signal<{ id: string; title: string }[]>([]);
+  classes = signal<Array<{ id: string; title: string }>>([]);
   selectedClassId = signal<string>('');
-  tests = signal<{ id: string; title: string; max: number }[]>([]);
-  students = signal<any[]>([]);
+  tests = signal<Array<{ id: string; title: string; max: number }>>([]);
+  students = signal<JSONRecord[]>([]);
   loading = signal(false);
 
   constructor(private schools: SchoolsService) {}
@@ -54,4 +55,3 @@ export class GradebookPage implements OnInit {
     URL.revokeObjectURL(url);
   }
 }
-

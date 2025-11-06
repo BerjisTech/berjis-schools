@@ -1,29 +1,30 @@
 <div class="p-4 md:p-8 grid md:grid-cols-12 gap-6">
   <div class="md:col-span-4 space-y-3">
     <div class="flex gap-2">
-      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Class ID" [ngModel]="newClassId()" (ngModelChange)="newClassId.set($event)" />
-      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Recipient User ID" [ngModel]="newUserId()" (ngModelChange)="newUserId.set($event)" />
+      <label class="sr-only" for="msgClassId">Class ID</label><input id="msgClassId" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Class ID" [ngModel]="newClassId()" (ngModelChange)="newClassId.set($event)" />
+      <label class="sr-only" for="msgRecipient">Recipient User ID</label><input id="msgRecipient" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Recipient User ID" [ngModel]="newUserId()" (ngModelChange)="newUserId.set($event)" />
       <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="start()">Start</button>
     </div>
     <ul class="space-y-1 text-sm">
-      <li *ngFor="let t of threads()" class="border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer" (click)="open(t.id)">
+      <li *ngFor="let t of threads()" class="border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer" role="button" tabindex="0" (click)="open(t.id)" (keyup.enter)="open(t.id)">
         <div class="font-medium">Thread {{ t.id | slice:0:8 }}</div>
-        <div class="text-slate-500">Class: {{ t.classID || t.classId }} · With: {{ t.other }}</div>
-        <div class="text-slate-500" *ngIf="t.lastMsg">“{{ t.lastMsg }}”</div>
+        <div class="text-slate-500">Class: {{ t.classID || t.classId }} ï¿½ With: {{ t.other }}</div>
+        <div class="text-slate-500" *ngIf="t.lastMsg">ï¿½{{ t.lastMsg }}ï¿½</div>
       </li>
     </ul>
   </div>
   <div class="md:col-span-8 space-y-4" *ngIf="selectedId()">
     <div class="space-y-2 max-h-[60vh] overflow-y-auto">
       <div *ngFor="let m of messages()" class="border border-slate-200 rounded-lg px-3 py-2">
-        <div class="text-xs text-slate-500">{{ m.sender }} · {{ m.createdAt | date:'short' }}</div>
+        <div class="text-xs text-slate-500">{{ m.sender }} ï¿½ {{ m.createdAt | date:'short' }}</div>
         <div class="text-sm">{{ m.body }}</div>
       </div>
     </div>
     <div class="flex gap-2">
-      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Type a message" [ngModel]="compose()" (ngModelChange)="compose.set($event)" />
+      <label class="sr-only" for="composeMsg">Type a message</label><input id="composeMsg" class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Type a message" [ngModel]="compose()" (ngModelChange)="compose.set($event)" />
       <button class="px-3 py-2 rounded-lg border text-sm" (click)="startCall()">Start Call</button>
       <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="send()">Send</button>
     </div>
   </div>
 </div>
+

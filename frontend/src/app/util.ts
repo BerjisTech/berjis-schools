@@ -5,7 +5,7 @@ export function detectRootDomain(hostname: string): string {
   return 'berjis.tech';
 }
 
-export function urlFor(sub: 'api'|'schools-api'|'schools', proto = window.location.protocol): string {
+export function urlFor(sub: 'api'|'schools-api'|'schools'|'ai'|'ai-api', proto = window.location.protocol): string {
   const root = detectRootDomain(window.location.hostname);
   const host = sub === 'schools' ? `schools.${root}` : `${sub}.${root}`;
   return `${proto}//${host}`;

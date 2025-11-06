@@ -1,0 +1,14 @@
+{
+  "tutor.onboarding.title": "Demander à devenir tuteur privé",
+  "tutor.onboarding.kicker": "Intégration Tuteur",
+  "tutor.onboarding.subtitle": "Suivez les étapes guidées, enregistrez des brouillons à tout moment et revenez quand vous êtes prêt. Une fois tout bon, soumettez pour une validation rapide par notre équipe.",
+  "tutor.onboarding.currentStep": "Étape actuelle",
+  "tutor.onboarding.complete": "terminé",
+  "tutor.onboarding.personalInfo": "Informations personnelles",
+  "tutor.onboarding.personalInfo.help": "Aidez les familles à savoir qui vous êtes et comment vous joindre.",
+
+  "school.apply.title": "Demander la création d'une école",
+  "school.apply.kicker": "Demande d'école",
+  "school.apply.subtitle": "Fournissez les détails institutionnels et téléchargez les documents de vérification requis pour examen."
+}
+

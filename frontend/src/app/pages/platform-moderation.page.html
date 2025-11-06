@@ -7,8 +7,8 @@
       <a routerLink="/moderation/schools" class="text-sm text-blue-600 hover:underline">Review School Applications</a>
     </div>
     <div class="flex gap-2 items-end">
-      <label class="text-sm">Status</label>
-      <select [(ngModel)]="status" name="status" class="border border-gray-300 rounded-md px-3 py-2">
+      <label class="text-sm" for="pmStatus">Status</label>
+      <select id="pmStatus" [(ngModel)]="status" name="status" class="border border-gray-300 rounded-md px-3 py-2">
         <option value="open">Open</option>
         <option value="reviewed">Reviewed</option>
         <option value="dismissed">Dismissed</option>

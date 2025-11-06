@@ -1,4 +1,4 @@
-import { UserRef } from './course';
+import { UserRef, LessonContent } from './course';
 
 export interface SchoolSummary {
   id: string;
@@ -59,7 +59,7 @@ export interface SchoolLessonOverview {
   id: string;
   title: string;
   type: string;
-  content?: any;
+  content?: LessonContent;
   orderIndex: number;
   isFree: boolean;
   tests: SchoolTestOverview[];

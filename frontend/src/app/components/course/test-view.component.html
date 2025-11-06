@@ -99,11 +99,13 @@
       <!-- Hotspot (placeholder) -->
       <div *ngIf="q.qtype==='hotspot'">
           <div class="relative inline-block" [style.width.px]="q.options?.width || 600" [style.height.px]="q.options?.height || 400">
-            <img [src]="q.options?.imageUrl" class="w-full h-full object-contain" />
+            <img [src]="q.options?.imageUrl" [attr.alt]="q?.title || 'Question image'" class="w-full h-full object-contain" />
             <div *ngFor="let r of (q.options?.regions || [])" class="absolute border-2 border-amber-500/60"
               [style.left.px]="r.coords?.[0]" [style.top.px]="r.coords?.[1]" [style.width.px]="r.coords?.[2]" [style.height.px]="r.coords?.[3]"
               [class.bg-amber-200]="(getAnswer(q.id)||[]).includes(r.id)"
-            (click)="toggleHotspot(q.id, r.id)">
+            role="button" tabindex="0"
+            (click)="toggleHotspot(q.id, r.id)"
+            (keyup.enter)="toggleHotspot(q.id, r.id)">
             </div>
           </div>
         </div>
@@ -143,8 +145,8 @@
     <div class="font-semibold">Add Question</div>
     <div class="grid md:grid-cols-2 gap-3">
       <div>
-        <label class="block text-sm mb-1">Type</label>
-        <select class="border rounded px-3 py-2 w-full" [ngModel]="qType()" (ngModelChange)="qType.set($event)">
+        <label class="block text-sm mb-1" for="qType">Type</label>
+        <select id="qType" class="border rounded px-3 py-2 w-full" [ngModel]="qType()" (ngModelChange)="qType.set($event)">
           <optgroup label="Objective">
             <option *ngFor="let o of objectiveOptions" [value]="o.value">{{ o.label }}</option>
           </optgroup>
@@ -157,22 +159,22 @@
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">Prompt</label>
-        <input class="border rounded px-3 py-2 w-full" [ngModel]="qPrompt()" (ngModelChange)="qPrompt.set($event)" />
+        <label class="block text-sm mb-1" for="qPrompt">Prompt</label>
+        <input id="qPrompt" class="border rounded px-3 py-2 w-full" [ngModel]="qPrompt()" (ngModelChange)="qPrompt.set($event)" />
       </div>
     </div>
     <div *ngIf="qType()==='multiple_choice' || qType()==='multiple_select'" class="space-y-2">
       <label class="flex items-center gap-2 text-sm"><input type="checkbox" [ngModel]="qAllowMultiple()" (ngModelChange)="qAllowMultiple.set($event)" /> Allow multiple (for multi-select)</label>
-      <label class="block text-sm mb-1">Choices (one per line, e.g. "A. Option 1")</label>
-      <textarea class="w-full border rounded px-3 py-2" rows="4" [ngModel]="qChoicesText()" (ngModelChange)="qChoicesText.set($event)"></textarea>
+      <label class="block text-sm mb-1" for="qChoicesText">Choices (one per line, e.g. "A. Option 1")</label>
+      <textarea id="qChoicesText" class="w-full border rounded px-3 py-2" rows="4" [ngModel]="qChoicesText()" (ngModelChange)="qChoicesText.set($event)"></textarea>
     </div>
     <div>
-      <label class="block text-sm mb-1">Advanced: Options JSON</label>
-      <textarea class="w-full border rounded px-3 py-2" rows="4" placeholder='{"choices":[{"key":"A","label":"..."}]}' [ngModel]="qOptionsJSON()" (ngModelChange)="qOptionsJSON.set($event)"></textarea>
+      <label class="block text-sm mb-1" for="qOptionsJSON">Advanced: Options JSON</label>
+      <textarea id="qOptionsJSON" class="w-full border rounded px-3 py-2" rows="4" placeholder='{"choices":[{"key":"A","label":"..."}]}' [ngModel]="qOptionsJSON()" (ngModelChange)="qOptionsJSON.set($event)"></textarea>
     </div>
     <div>
-      <label class="block text-sm mb-1">Advanced: Answer JSON</label>
-      <textarea class="w-full border rounded px-3 py-2" rows="4" placeholder='{"key":"A"} or {"keys":["A","D"]}' [ngModel]="qAnswerJSON()" (ngModelChange)="qAnswerJSON.set($event)"></textarea>
+      <label class="block text-sm mb-1" for="qAnswerJSON">Advanced: Answer JSON</label>
+      <textarea id="qAnswerJSON" class="w-full border rounded px-3 py-2" rows="4" placeholder='{"key":"A"} or {"keys":["A","D"]}' [ngModel]="qAnswerJSON()" (ngModelChange)="qAnswerJSON.set($event)"></textarea>
     </div>
     <div class="flex items-center gap-3">
       <button type="button" class="px-4 py-2 rounded bg-gray-900 text-white" [disabled]="creating()" (click)="createQuestion()">{{ creating() ? 'Creating…' : 'Create Question' }}</button>

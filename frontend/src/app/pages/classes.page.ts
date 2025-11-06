@@ -19,4 +19,21 @@ export class ClassesPage implements OnInit {
     this.loading = true;
     try { this.courses = await this.svc.listCourses(); } finally { this.loading = false }
   }
+
+  async buy(c: Course) {
+    try {
+      const gw = (localStorage.getItem('payments.gateway') as any) || 'stripe';
+      const phone = localStorage.getItem('payments.mpesaPhone') || undefined;
+      const coupon = localStorage.getItem('payments.coupon') || undefined;
+      const result = await this.svc.checkout(`${c.id}`, { gateway: gw, mode: 'hosted', currency: 'USD', successUrl: window.location.origin + `/course/${c.id}`, phone });
+      if (result?.url) {
+        window.location.href = result.url;
+      }
+    } catch {}
+  }
+
+  onCouponChange(e: any) {
+    const val = String(e?.target?.value || '').trim();
+    if (val) localStorage.setItem('payments.coupon', val); else localStorage.removeItem('payments.coupon');
+  }
 }

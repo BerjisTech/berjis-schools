@@ -16,7 +16,7 @@ export class SchoolStaffPage implements OnInit {
   schoolId = signal('');
   overview = signal<SchoolOverview | null>(null);
   invites = signal<SchoolInvite[]>([]);
-  members = signal<{ userId: string; role: string; status: string }[]>([]);
+  members = signal<Array<{ userId: string; role: string; status: string }>>([]);
 
   loadingOverview = signal(false);
   loadingInvites = signal(false);
@@ -52,8 +52,9 @@ export class SchoolStaffPage implements OnInit {
       if (this.schoolId()) {
         await Promise.all([this.loadOverview(), this.loadMembers(), this.loadInvites()]);
       }
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Failed to load schools' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Failed to load schools';
+      this.toast.set({ kind: 'error', text: msg });
     }
   }
 
@@ -71,8 +72,9 @@ export class SchoolStaffPage implements OnInit {
     try {
       const data = await this.svc.getSchoolOverview(this.schoolId());
       this.overview.set(data);
-    } catch (e: any) {
-      this.toast.set({ kind: 'error', text: e?.message || 'Failed to load overview' });
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Failed to load overview';
+      this.toast.set({ kind: 'error', text: msg });
     } finally {
       this.loadingOverview.set(false);
     }

@@ -45,10 +45,16 @@ export class LessonViewComponent implements OnInit {
     try {
       const raw = localStorage.getItem(`lesson:${lessonId}:qa`);
       if (raw) this.qas.set(JSON.parse(raw));
-    } catch {}
+    } catch {
+      /* no-op: localStorage might be disabled */
+    }
   }
   private saveLocalQA(lessonId: string) {
-    try { localStorage.setItem(`lesson:${lessonId}:qa`, JSON.stringify(this.qas())); } catch {}
+    try {
+      localStorage.setItem(`lesson:${lessonId}:qa`, JSON.stringify(this.qas()));
+    } catch {
+      /* no-op: localStorage might be disabled */
+    }
   }
 
   askQuestion() {
@@ -84,8 +90,13 @@ export class LessonViewComponent implements OnInit {
   }
 
   simulationUrl(lesson: Lesson): SafeResourceUrl | null {
-    const url = (lesson?.content as any)?.sandboxUrl;
-    if (!url || typeof url !== 'string' || !url.trim()) return null;
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    const content = lesson?.content;
+    if (content && typeof content === 'object' && 'type' in content && (content as { type?: unknown }).type === 'simulation') {
+      const sim = content as { sandboxUrl?: unknown };
+      const url = typeof sim.sandboxUrl === 'string' ? sim.sandboxUrl : '';
+      if (!url.trim()) return null;
+      return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    }
+    return null;
   }
 }

@@ -1,0 +1,97 @@
+<div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+  <div class="text-xs font-semibold text-slate-700">Resources</div>
+
+  <div class="mt-2 flex flex-col gap-2" *ngIf="resources().length; else noRes">
+    <div *ngFor="let r of resources()" class="flex items-center justify-between rounded bg-white px-3 py-2 text-sm">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-base" [ngClass]="{
+          'text-indigo-600': r.type==='docs', 'text-emerald-600': r.type==='sheets', 'text-amber-600': r.type==='notes', 'text-rose-600': r.type==='pdf', 'text-purple-600': r.type==='slides'
+        }">insert_drive_file</span>
+        <span>{{ r.title || (r.type | titlecase) }}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="px-2 py-1 rounded border text-xs" (click)="openResource(r.id)">Open</button>
+        <button class="px-2 py-1 rounded border text-xs" (click)="openShare(r.id)">Share</button>
+        <div *ngIf="canManage && quickPrincipal" class="hidden md:flex items-center gap-1 text-[11px] text-slate-500">
+          <span>{{ quickPrincipal.label }}:</span>
+          <button class="px-2 py-1 rounded border" title="Grant Viewer" (click)="svc.grantResourceRole(r.id, quickPrincipal.type, quickPrincipal.id, 'viewer')">V</button>
+          <button class="px-2 py-1 rounded border" title="Grant Commenter" (click)="svc.grantResourceRole(r.id, quickPrincipal.type, quickPrincipal.id, 'commenter')">C</button>
+          <button class="px-2 py-1 rounded border" title="Grant Editor" (click)="svc.grantResourceRole(r.id, quickPrincipal.type, quickPrincipal.id, 'editor')">E</button>
+          <button class="px-2 py-1 rounded border" title="Revoke" (click)="svc.revokeResourceRole(r.id, quickPrincipal.type, quickPrincipal.id)">✕</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ng-template #noRes>
+    <div class="text-xs text-slate-500">No resources yet.</div>
+  </ng-template>
+
+  <div *ngIf="canManage" class="mt-3 grid gap-2 md:grid-cols-3">
+    <div class="flex items-center gap-2 text-xs">
+      <label class="text-slate-600" for="attachMode">Mode</label>
+      <select id="attachMode" class="rounded border border-slate-300 px-2 py-1" [ngModel]="attachMode()" (ngModelChange)="attachMode.set($event)">
+        <option value="create">Create</option>
+        <option value="link">Link</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2 text-xs">
+      <label class="text-slate-600" for="attachType">Type</label>
+      <select id="attachType" class="rounded border border-slate-300 px-2 py-1" [ngModel]="attachType()" (ngModelChange)="attachType.set($event)">
+        <option value="docs">Docs</option>
+        <option value="sheets">Sheets</option>
+        <option value="notes">Notes</option>
+        <option value="pdf">PDF</option>
+        <option value="slides">Slides</option>
+      </select>
+    </div>
+    <div class="flex gap-2 text-xs">
+      <input class="flex-1 rounded border border-slate-300 px-2 py-1" placeholder="Title (create)" [ngModel]="attachTitle()" (ngModelChange)="attachTitle.set($event)" />
+    </div>
+    <div class="md:col-span-2 flex gap-2 text-xs" *ngIf="attachMode()==='link'">
+      <input class="flex-1 rounded border border-slate-300 px-2 py-1" placeholder="Existing editor URL" [ngModel]="attachURL()" (ngModelChange)="attachURL.set($event)" />
+    </div>
+    <div class="flex">
+      <button class="ml-auto rounded bg-blue-700 px-3 py-1 text-xs font-medium text-white" (click)="attach()">Attach</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div *ngIf="shareOpen()" class="fixed inset-0 z-[70000] flex items-center justify-center bg-black/30">
+  <div class="w-[520px] max-w-[95vw] rounded-xl bg-white p-4 shadow-xl">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-semibold">Share Resource</h3>
+      <button class="text-slate-500" (click)="shareOpen.set(false)">✕</button>
+    </div>
+    <div *ngIf="toast()" class="mt-2 rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ toast() }}</div>
+    <div class="mt-3 space-y-2">
+      <div class="flex gap-2 relative">
+        <input class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm" placeholder="Search user by name, email, or ID" [ngModel]="shareQuery()" (ngModelChange)="onShareQueryChange($event)" />
+        <select class="rounded border border-slate-300 px-2 py-1 text-sm" [ngModel]="shareRole()" (ngModelChange)="shareRole.set($event)">
+          <option value="viewer">Viewer</option>
+          <option value="commenter">Commenter</option>
+          <option value="editor">Editor</option>
+          <option value="owner">Owner</option>
+        </select>
+        <button class="rounded bg-blue-700 px-3 py-1 text-sm font-medium text-white" (click)="addUserShare()">Add</button>
+        <div *ngIf="shareSearching()" class="absolute left-0 right-28 top-full z-[80000] mt-1 rounded border bg-white px-3 py-2 text-xs text-slate-500">Searching…</div>
+        <div *ngIf="!shareSearching() && shareSuggestions().length" class="absolute left-0 right-28 top-full z-[80000] mt-1 max-h-[220px] overflow-y-auto rounded border bg-white shadow">
+          <button *ngFor="let u of shareSuggestions()" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50" (click)="pickSuggestion(u)">
+            {{ u.displayName || u.userId }}
+            <span class="text-xs text-slate-500">{{ u.userId }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="mt-3 max-h-[240px] overflow-y-auto rounded border">
+        <div *ngFor="let row of shareRows()" class="flex items-center justify-between border-b px-3 py-2 text-sm">
+          <div>
+            <div class="font-medium">{{ row.principalType }}: {{ row.principalId }}</div>
+            <div class="text-xs text-slate-500">{{ row.role | titlecase }} • {{ row.createdAt | date:'short' }}</div>
+          </div>
+          <button class="rounded border px-2 py-1 text-xs" (click)="revokeShare(row.principalType, row.principalId)">Revoke</button>
+        </div>
+        <div *ngIf="!shareRows().length" class="px-3 py-2 text-xs text-slate-500">No explicit shares yet.</div>
+      </div>
+    </div>
+  </div>
+</div>

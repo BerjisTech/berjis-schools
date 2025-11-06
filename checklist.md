@@ -11,7 +11,7 @@ This checklist verifies that an educational platform meets all functional requir
 - [x] System supports distinct user types: Student, Teacher/Tutor, Parent, School Admin, Platform Admin
 - [x] Users can have multiple roles simultaneously (e.g., teacher at a school AND independent tutor)
 - [x] Role-based access control (RBAC) is implemented for all features
-- [ ] User profiles distinguish between independent and school-affiliated status
+- [x] User profiles distinguish between independent and school-affiliated status
 
 ### 1.2 Registration & Onboarding
 - [x] Student registration flow exists (independent and school-based)
@@ -19,7 +19,7 @@ This checklist verifies that an educational platform meets all functional requir
 - [x] School registration with institutional verification process
 - [x] Parent registration with student linking capability
 - [x] Email/phone verification system implemented
-- [ ] Multi-language support in registration forms
+- [x] Multi-language support in registration forms
 
 ### 1.3 Vetting & Approval System
 - [x] Independent teacher applications queue exists
@@ -29,7 +29,7 @@ This checklist verifies that an educational platform meets all functional requir
  - [x] Approval/rejection workflow with notification system
 - [x] Status tracking (Pending, Under Review, Approved, Rejected)
 - [x] Reapplication mechanism for rejected applications
-- [ ] Background check integration capability (optional)
+- [x] Background check integration capability (optional)
 
 ---
 
@@ -45,9 +45,9 @@ This checklist verifies that an educational platform meets all functional requir
 ### 2.2 Content & Resource Management
 - [x] Courses can be created as independent OR school-specific
 - [x] Tests can be independent, school-specific, or shared
-- [ ] Certifications support independent and institutional issuance
-- [ ] Visibility controls (public, school-only, private)
-- [ ] Content ownership and licensing tracking
+- [x] Certifications support independent and institutional issuance
+- [x] Visibility controls (public, school-only, private)
+- [x] Content ownership and licensing tracking
 
 ---
 
@@ -57,19 +57,19 @@ This checklist verifies that an educational platform meets all functional requir
 - [x] Course creation interface for teachers
 - [x] Course catalog/marketplace for independent courses
 - [x] School-specific course library
-- [ ] Course enrollment mechanism (paid and free)
+- [x] Course enrollment mechanism (paid and free)
 - [x] Curriculum/syllabus builder
 - [x] Multi-format content support (video, documents, interactive)
-- [ ] Course prerequisites and progression tracking
+- [x] Course prerequisites and progression tracking
 - [ ] Course versioning and updates
 
 ### 3.2 Assessment System
 - [x] Test/quiz creation tools
 - [x] Multiple question types (MCQ, essay, practical, etc.)
 - [x] Automated and manual grading options
-- [ ] Test scheduling and proctoring features
+- [x] Test scheduling and proctoring features
  - [x] Grade book and transcript generation
-- [ ] Performance analytics and reporting
+- [x] Performance analytics and reporting
 - [ ] Adaptive testing capability (optional)
 
 ### 3.3 Certification System
@@ -79,39 +79,40 @@ This checklist verifies that an educational platform meets all functional requir
 - [x] Independent certification issuance
 - [x] School-branded certification
 - [x] Certificate revocation mechanism
-- [ ] Blockchain/cryptographic verification (optional)
+- [x] Blockchain/cryptographic verification (optional)
 
 ---
 
 ## 4. COLLABORATION & COMMUNICATION FEATURES
 
 ### 4.1 Student Collaboration
-- [ ] Student-to-student discussion forums
-- [ ] Study group creation and management
-- [ ] Collaborative document editing
-  - [ ] Use existing Berjis tools (no new editors): docs.berjis.tech, sheets.berjis.tech, notes.berjis.tech, pdf.berjis.tech, slides.berjis.tech
-  - [ ] SSO via Core API; seamless auth from Schools app to editors
-  - [ ] Permissions model (map to class/group/school roles):
-    - [ ] Owner: full control
-    - [ ] Editor: edit content
-    - [ ] Commenter/Annotator: can leave comments/notes (no content edits)
-    - [ ] Viewer: view-only
-  - [ ] ACL sources supported: Class, Study Group, School, Individual share
-  - [ ] PDF: annotations enabled for Commenter, view-only for Viewer
-  - [ ] Slides: presenter can edit; viewers can comment when allowed
-  - [ ] Share dialogs respect unified roles; revocation propagates
-  - [ ] Audit: who changed what (editor history)
+- [x] Student-to-student discussion forums
+- [x] Study group creation and management
+- [x] Collaborative document editing
+  - [x] Use existing Berjis tools (no new editors): docs.berjis.tech, sheets.berjis.tech, notes.berjis.tech, pdf.berjis.tech, slides.berjis.tech
+  - [x] SSO via Core API; seamless auth from Schools app to editors (via `/v1/resources/:id/open` and `/v1/sso/redirect`)
+  - [x] Permissions model (map to class/group/school roles) wired in Schools
+    - [x] Owner: full control (enforced in editor services)
+    - [x] Editor: edit content (enforced in editor services)
+    - [x] Commenter/Annotator: can leave annotations/notes (PDF/Slides endpoints)
+    - [x] Viewer: view-only (read access gated)
+  - [x] ACL sources supported: Class, Study Group, School, Individual share
+  - [x] PDF: annotations enabled for Commenter; viewers view-only (server-enforced)
+  - [x] Slides: notes enabled for Commenter; viewers view-only (server-enforced)
+  - [x] Share dialogs respect unified roles; revocation propagates
+  - [x] Share modal in Schools lists current ACL and allows revoke (Lessons, Groups, Class panels)
+  - [ ] Audit: who changed what (editor history visible; no custom history in Schools)
 - [ ] Peer review and feedback system
 - [ ] Version control for collaborative work
-- [ ] Group project management tools
+- [x] Group project management tools
 
 ### 4.2 One-on-One Communication
 - [x] Teacher-student private messaging
 - [x] Parent-teacher private messaging
-- [ ] Video call integration (1-on-1)
+- [x] Video call integration (1-on-1)
 - [x] Appointment/office hours scheduling
 - [x] File sharing in private conversations
-- [ ] Conversation history and archiving
+- [x] Conversation history and archiving
 
 ### 4.3 Group Communication
 - [ ] Class/group discussion boards
@@ -237,10 +238,10 @@ This checklist verifies that an educational platform meets all functional requir
 ### 8.3 Data Management
 - [ ] Regular automated backups
 - [ ] Disaster recovery plan
-- [ ] Data export functionality for users
-- [ ] Data deletion/right to be forgotten
-- [ ] Audit logging for sensitive operations
-- [ ] Data retention policies
+- [x] Data export functionality for users
+- [x] Data deletion/right to be forgotten
+- [x] Audit logging for sensitive operations
+- [x] Data retention policies
 
 ---
 
@@ -277,7 +278,7 @@ This checklist verifies that an educational platform meets all functional requir
 ### 10.2 System Monitoring
 - [ ] Uptime monitoring
 - [ ] Error tracking and logging
-- [ ] Performance metrics (page load, API response times)
+- [x] Performance metrics (page load, API response times)
 - [ ] User feedback collection system
 - [ ] Bug reporting mechanism
 - [ ] A/B testing capability
@@ -286,10 +287,10 @@ This checklist verifies that an educational platform meets all functional requir
 
 ## 11. MOBILE SUPPORT
 
-- [ ] Responsive web design for all devices
-- [ ] Native iOS app (or PWA)
-- [ ] Native Android app (or PWA)
-- [ ] Offline mode for content access
+- [x] Responsive web design for all devices
+- [x] Native iOS app (or PWA)
+- [x] Native Android app (or PWA)
+- [x] Offline mode for content access
 - [ ] Push notifications
 - [ ] Mobile-optimized video player
 - [ ] Touch-optimized interfaces
@@ -363,3 +364,4 @@ FEATURE AUDIT REPORT
 ```
 
 Then provide a prioritized implementation roadmap for missing features.
+

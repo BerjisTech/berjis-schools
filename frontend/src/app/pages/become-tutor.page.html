@@ -4,11 +4,9 @@
     <div class="grid gap-6 lg:grid-cols-[2fr,1fr]">
       <div class="space-y-6">
         <header class="rounded-3xl bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-500 p-6 text-white shadow-xl sm:p-8">
-          <p class="text-xs font-semibold uppercase tracking-[0.35em] text-white/70">Tutor Onboarding</p>
-          <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Apply to become a private tutor</h2>
-          <p class="mt-3 max-w-2xl text-sm text-white/80 sm:text-base">
-            Follow the guided steps, save drafts any time, and come back when you are ready. Once everything looks good, submit for a quick review by our team.
-          </p>
+          <p class="text-xs font-semibold uppercase tracking-[0.35em] text-white/70">{{ 'tutor.onboarding.kicker' | t }}</p>
+          <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">{{ 'tutor.onboarding.title' | t }}</h2>
+          <p class="mt-3 max-w-2xl text-sm text-white/80 sm:text-base">{{ 'tutor.onboarding.subtitle' | t }}</p>
           <div *ngIf="statusLine" class="mt-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-1.5 text-sm font-medium backdrop-blur">
             <span class="h-2.5 w-2.5 rounded-full"
                   [ngClass]="{
@@ -24,7 +22,7 @@
           <div class="space-y-6 p-6 sm:p-8">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Current step</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{{ 'tutor.onboarding.currentStep' | t }}</p>
                 <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">{{ currentStep.label }}</h3>
                 <p class="mt-1 text-sm text-slate-500">{{ currentStep.description }}</p>
               </div>
@@ -62,8 +60,8 @@
         <form class="space-y-6" (ngSubmit)="apply(false)">
           <section *ngIf="step===0" class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100/80">
             <div class="border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:px-8">
-              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">Personal info</h3>
-              <p class="mt-1 text-sm text-slate-500">Help families know who you are and how to reach you.</p>
+              <h3 class="text-lg font-semibold text-slate-900 sm:text-xl">{{ 'tutor.onboarding.personalInfo' | t }}</h3>
+              <p class="mt-1 text-sm text-slate-500">{{ 'tutor.onboarding.personalInfo.help' | t }}</p>
             </div>
             <div class="space-y-6 px-6 py-6 sm:px-8">
               <ng-container *ngIf="fieldsMissingForStep(0) as missing">

@@ -1,0 +1,22 @@
+<div class="p-6 space-y-4">
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-semibold">My Purchases</h2>
+    <a routerLink="/classes" class="text-blue-600">Back to courses</a>
+  </div>
+  <div *ngIf="loading">Loading…</div>
+  <div *ngIf="!loading && rows.length===0" class="text-sm text-slate-500">No purchases yet.</div>
+  <div *ngIf="rows.length" class="border rounded-xl overflow-hidden">
+    <div class="grid grid-cols-6 gap-2 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600">
+      <div>Course</div><div>Status</div><div>Amount</div><div>Currency</div><div>When</div><div></div>
+    </div>
+    <div *ngFor="let r of rows" class="grid grid-cols-6 gap-2 px-4 py-3 border-t text-sm">
+      <div class="truncate">{{ r.title }}</div>
+      <div class="uppercase text-xs">{{ r.status }}</div>
+      <div>{{ (r.price / 100) | currency:r.currency }}</div>
+      <div>{{ r.currency }}</div>
+      <div>{{ r.created_at | date:'medium' }}</div>
+      <div class="text-right"><a [routerLink]="['/receipt', r.id]" class="text-blue-600">Receipt</a></div>
+    </div>
+  </div>
+</div>
+

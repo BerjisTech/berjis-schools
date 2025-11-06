@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { urlFor } from '../../app/util';
+type JSONObject = Record<string, unknown>;
 
 @Component({
   selector: 'app-moderation-page',
@@ -18,14 +19,14 @@ export class ModerationPage {
   reportMsg = '';
   reportOk = false;
   query = '';
-  results: { id: string; label: string }[] = [];
+  results: Array<{ id: string; label: string }> = [];
   selectedLabel = '';
 
   blockUserId = '';
   blockQuery = '';
-  blockResults: { id: string; label: string }[] = [];
+  blockResults: Array<{ id: string; label: string }> = [];
   blockSelectedLabel = '';
-  blocks: { blockedUserId: string; createdAt: string }[] = [];
+  blocks: Array<{ blockedUserId: string; createdAt: string }> = [];
 
   async report() {
     this.savingReport = true; this.reportMsg = ''; this.reportOk = false;
@@ -38,7 +39,7 @@ export class ModerationPage {
       if (!j?.success) throw new Error(j?.message || 'Failed');
       this.reportOk = true; this.reportMsg = 'Report submitted.';
       this.targetId = ''; this.reason = ''; this.details = '';
-    } catch (e: any) { this.reportMsg = e?.message || 'Failed to submit report' }
+    } catch (e: unknown) { this.reportMsg = (e && typeof e === 'object' && 'message' in e) ? String((e as { message?: unknown }).message) : 'Failed to submit report' }
     finally { this.savingReport = false }
   }
 
@@ -48,8 +49,8 @@ export class ModerationPage {
     try {
       const res = await fetch(`${urlFor('schools-api')}/v1/search?type=${type}&q=${encodeURIComponent(this.query)}`, { credentials: 'include' });
       const j = await res.json();
-      const arr = j?.data ?? [];
-      this.results = arr.map((x: any) => ({ id: x.id || x.userId, label: x.displayName || x.name || x.title || x.id || x.userId }));
+      const arr: JSONObject[] = j?.data ?? [];
+      this.results = arr.map((x) => ({ id: String((x.id ?? x.userId) || ''), label: String((x.displayName ?? x.name ?? x.title ?? x.id ?? x.userId) || '') }));
     } catch { this.results = [] }
   }
 
@@ -69,8 +70,8 @@ export class ModerationPage {
     try {
       const res = await fetch(`${urlFor('schools-api')}/v1/search?type=user&q=${encodeURIComponent(this.blockQuery)}`, { credentials: 'include' });
       const j = await res.json();
-      const arr = j?.data ?? [];
-      this.blockResults = arr.map((x: any) => ({ id: x.userId, label: x.displayName || x.userId }));
+      const arr: JSONObject[] = j?.data ?? [];
+      this.blockResults = arr.map((x) => ({ id: String(x.userId ?? ''), label: String((x.displayName ?? x.userId) || '') }));
     } catch { this.blockResults = [] }
   }
 

@@ -1,0 +1,21 @@
+<div class="p-6 space-y-6">
+  <h2 class="text-lg font-semibold">Payment Settings</h2>
+  <section class="border rounded-xl bg-white shadow-sm p-5 space-y-4">
+    <div>
+      <div class="text-sm font-semibold mb-2">Preferred gateway</div>
+      <label class="block text-sm"><input type="radio" name="gw" [(ngModel)]="gateway" value="stripe"> <span class="ml-1">Stripe</span></label>
+      <label class="block text-sm"><input type="radio" name="gw" [(ngModel)]="gateway" value="flutterwave"> <span class="ml-1">Flutterwave</span></label>
+      <label class="block text-sm"><input type="radio" name="gw" [(ngModel)]="gateway" value="mpesa"> <span class="ml-1">M‑Pesa</span></label>
+    </div>
+    <div>
+      <div class="text-sm font-semibold mb-2">M‑Pesa phone</div>
+      <input class="border rounded px-3 py-2 text-sm w-full max-w-sm" [(ngModel)]="phone" placeholder="e.g., 2547XXXXXXXX" />
+    </div>
+    <div>
+      <div class="text-sm font-semibold mb-2">Promo code</div>
+      <input class="border rounded px-3 py-2 text-sm w-full max-w-sm" [(ngModel)]="coupon" placeholder="Enter coupon" />
+    </div>
+    <button class="px-4 py-2 rounded bg-blue-600 text-white" (click)="save()">Save</button>
+  </section>
+</div>
+

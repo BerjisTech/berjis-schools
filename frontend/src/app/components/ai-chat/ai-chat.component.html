@@ -1,0 +1,18 @@
+<div class="fixed bottom-5 right-5 z-[99999]">
+  <button (click)="toggle()" class="rounded-full bg-blue-600 text-white shadow-lg px-4 py-2">{{ open ? 'Close AI' : 'Ask AI' }}</button>
+</div>
+<div *ngIf="open" class="fixed bottom-16 right-5 z-[99999] w-[420px] h-[560px] bg-white border rounded-xl shadow-2xl flex flex-col">
+  <div class="px-4 py-2 border-b font-semibold">AI Assistant</div>
+  <div class="flex-1 overflow-auto p-3 space-y-2 text-sm">
+    <div *ngFor="let m of messages" [class]="m.role==='user' ? 'text-right' : 'text-left'">
+      <div class="inline-block max-w-[85%] px-3 py-2 rounded-xl" [class.bg-blue-600]="m.role==='user'" [class.text-white]="m.role==='user'" [class.bg-slate-100]="m.role==='assistant'">
+        {{ m.content }}
+      </div>
+    </div>
+  </div>
+  <form class="p-2 border-t flex items-center gap-2" (submit)="$event.preventDefault(); send()">
+    <input class="flex-1 border rounded px-3 py-2 text-sm" [(ngModel)]="input" name="input" placeholder="Ask a question" [disabled]="busy" />
+    <button class="px-3 py-2 rounded bg-blue-600 text-white" type="submit" [disabled]="busy">Send</button>
+  </form>
+</div>
+

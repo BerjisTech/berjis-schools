@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { urlFor } from '../util';
+import { JSONObject } from '../types/json';
 
 @Component({
   selector: 'app-transcript',
@@ -15,7 +16,7 @@ export class TranscriptPage implements OnInit {
   loading = signal(false);
   name = signal('');
   overall = signal<number | null>(null);
-  classes = signal<{ title: string; percent?: number | null }[]>([]);
+  classes = signal<Array<{ title: string; percent?: number | null }>>([]);
 
   async ngOnInit() {
     await this.load();
@@ -29,8 +30,8 @@ export class TranscriptPage implements OnInit {
       const d = j?.data || {};
       this.name.set(d.name || '');
       this.overall.set(d.overallPercent ?? null);
-      const rows = Array.isArray(d.classes) ? d.classes : [];
-      this.classes.set(rows.map((r: any) => ({ title: r.title, percent: r.percent ?? null })));
+      const rows = Array.isArray(d.classes) ? d.classes as JSONObject[] : [];
+      this.classes.set(rows.map((r) => ({ title: String(r.title ?? ''), percent: (r.percent as number | null | undefined) ?? null })));
     } finally {
       this.loading.set(false);
     }
@@ -40,4 +41,3 @@ export class TranscriptPage implements OnInit {
     window.open(`${this.api}/v1/transcripts/me.pdf`, '_blank');
   }
 }
-

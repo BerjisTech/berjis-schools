@@ -1,0 +1,14 @@
+{
+  "tutor.onboarding.title": "Apply to become a private tutor",
+  "tutor.onboarding.kicker": "Tutor Onboarding",
+  "tutor.onboarding.subtitle": "Follow the guided steps, save drafts any time, and come back when you are ready. Once everything looks good, submit for a quick review by our team.",
+  "tutor.onboarding.currentStep": "Current step",
+  "tutor.onboarding.complete": "complete",
+  "tutor.onboarding.personalInfo": "Personal info",
+  "tutor.onboarding.personalInfo.help": "Help families know who you are and how to reach you.",
+
+  "school.apply.title": "Apply to create a school",
+  "school.apply.kicker": "School Application",
+  "school.apply.subtitle": "Provide institutional details and upload required verification documents for review."
+}
+

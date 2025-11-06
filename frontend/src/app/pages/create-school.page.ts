@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { TPipe } from '../t.pipe';
 import { AuthedUserProfile, fetchUserProfile, urlFor } from '../../app/util';
 
 type VerifyDocKey = 'registrationCertUrl' | 'taxPinUrl' | 'proofAddressUrl' | 'founderIdUrl';
@@ -82,7 +83,7 @@ function clone<T>(value: T): T {
 @Component({
   selector: 'app-create-school-page',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, TPipe],
   templateUrl: './create-school.page.html'
 })
 export class CreateSchoolPage implements OnInit {
@@ -415,7 +416,7 @@ export class CreateSchoolPage implements OnInit {
   private extractProfilePhone(profile: AuthedUserProfile | null): string {
     if (!profile) return '';
     const prefs: any = profile.preferences ?? {};
-    const candidates: Array<unknown> = [
+    const candidates: unknown[] = [
       (profile as any)?.phone,
       prefs?.contactPhone,
       prefs?.contact?.phone,
@@ -451,7 +452,7 @@ export class CreateSchoolPage implements OnInit {
   private mergeSection<T>(template: T, patch: any): T {
     const base = clone(template);
     if (!patch || typeof patch !== 'object') return base;
-    const stack: Array<{ target: any; source: any }> = [{ target: base, source: patch }];
+    const stack: Array<{ target: Record<string, unknown>; source: Record<string, unknown> }> = [{ target: base as Record<string, unknown>, source: patch as Record<string, unknown> }];
     while (stack.length) {
       const { target, source } = stack.pop()!;
       for (const key of Object.keys(source)) {
@@ -462,7 +463,7 @@ export class CreateSchoolPage implements OnInit {
           if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
             target[key] = clone(value);
           } else {
-            stack.push({ target: target[key], source: value });
+            stack.push({ target: target[key] as Record<string, unknown>, source: value as Record<string, unknown> });
           }
         } else {
           target[key] = value;
