@@ -1,0 +1,42 @@
+<div class="p-4 md:p-8 space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-semibold text-slate-900">Gradebook</h1>
+    <div class="flex items-center gap-3">
+      <select class="border border-slate-300 rounded-lg px-3 py-2 text-sm" [ngModel]="selectedClassId()" (ngModelChange)="selectedClassId.set($event); load()">
+        <option *ngFor="let c of classes()" [value]="c.id">{{ c.title }}</option>
+      </select>
+      <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="exportCsv()">Export CSV</button>
+    </div>
+  </div>
+
+  <div *ngIf="loading()" class="text-slate-500">Loading gradebook…</div>
+
+  <div *ngIf="!loading()" class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="bg-slate-100">
+          <th class="text-left px-3 py-2">Student</th>
+          <th *ngFor="let t of tests()" class="text-left px-3 py-2">{{ t.title }} <span class="text-slate-400">/ {{ t.max }}</span></th>
+          <th class="text-left px-3 py-2">Total %</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let s of students()" class="border-t border-slate-200">
+          <td class="px-3 py-2 font-medium">{{ s.name }}</td>
+          <td *ngFor="let t of tests()" class="px-3 py-2">
+            <ng-container *ngIf="s.grades && s.grades[t.id] as g; else dash">
+              <span *ngIf="g.score !== null && g.score !== undefined; else earnedPct">{{ g.score | number:'1.0-2' }}%</span>
+              <ng-template #earnedPct>
+                <span *ngIf="g.earned !== null && g.earned !== undefined">{{ (g.earned / t.max) * 100 | number:'1.0-2' }}%</span>
+              </ng-template>
+            </ng-container>
+            <ng-template #dash>—</ng-template>
+          </td>
+          <td class="px-3 py-2 font-semibold">
+            <span *ngIf="s.percent !== null && s.percent !== undefined">{{ s.percent | number:'1.0-2' }}%</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

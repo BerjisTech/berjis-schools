@@ -1,0 +1,76 @@
+<div class="p-4 md:p-8 space-y-8">
+  <h1 class="text-xl font-semibold text-slate-900">Certificates</h1>
+
+  <section class="space-y-3">
+    <div class="flex items-center gap-3">
+      <label class="text-sm">Scope</label>
+      <select class="border border-slate-300 rounded-lg px-3 py-2 text-sm" [ngModel]="scope()" (ngModelChange)="scope.set($event); reload()">
+        <option value="school">School</option>
+        <option value="platform">Platform</option>
+      </select>
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="School ID (for school scope)" [ngModel]="schoolId()" (ngModelChange)="schoolId.set($event)" />
+      <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="reload()">Load</button>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm flex-1" placeholder="New template name" [ngModel]="newName()" (ngModelChange)="newName.set($event)" />
+      <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" (click)="createTemplate()">Create Template</button>
+    </div>
+
+    <div>
+      <h2 class="text-sm font-semibold text-slate-700 mb-2">Templates</h2>
+      <ul class="space-y-1 text-sm">
+        <li *ngFor="let t of templates()" class="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2">
+          <div>
+            <div class="font-medium">{{ t.name }}</div>
+            <div class="text-slate-500">Scope: {{ t.scope }} <span *ngIf="t.schoolId">(School {{ t.schoolId }})</span></div>
+          </div>
+          <button class="px-2 py-1 rounded border text-slate-700" (click)="selectedTemplateId.set(t.id)">Use</button>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="space-y-3">
+    <h2 class="text-sm font-semibold text-slate-700">Issue Certificate</h2>
+    <div class="grid md:grid-cols-3 gap-3">
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Template ID" [ngModel]="selectedTemplateId()" (ngModelChange)="selectedTemplateId.set($event)" />
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Recipient User ID" [ngModel]="recipientUserId()" (ngModelChange)="recipientUserId.set($event)" />
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Class ID (optional)" [ngModel]="classId()" (ngModelChange)="classId.set($event)" />
+    </div>
+    <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="issue()">Issue</button>
+    <div class="text-emerald-700 text-sm" *ngIf="message()">{{ message() }}</div>
+  </section>
+
+  <section class="space-y-3">
+    <h2 class="text-sm font-semibold text-slate-700">Automation Rules</h2>
+    <div class="grid md:grid-cols-4 gap-3">
+      <select class="border border-slate-300 rounded-lg px-3 py-2 text-sm" [ngModel]="ruleScope()" (ngModelChange)="ruleScope.set($event)">
+        <option value="class">Class</option>
+        <option value="school">School</option>
+      </select>
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Rule School ID" [ngModel]="ruleSchoolId()" (ngModelChange)="ruleSchoolId.set($event)" />
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Rule Class ID" [ngModel]="ruleClassId()" (ngModelChange)="ruleClassId.set($event)" />
+      <input class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Template ID" [ngModel]="ruleTemplateId()" (ngModelChange)="ruleTemplateId.set($event)" />
+      <input type="number" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Min % (e.g., 80)" [ngModel]="ruleMinPercent()" (ngModelChange)="ruleMinPercent.set($event)" />
+    </div>
+    <div class="flex items-center gap-2">
+      <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" (click)="createRule()">Create & Enable Rule</button>
+      <button class="px-3 py-2 rounded-lg border text-sm" (click)="reload()">Refresh Rules</button>
+    </div>
+
+    <div>
+      <h3 class="text-sm font-semibold text-slate-700">Existing Rules</h3>
+      <ul class="space-y-1 text-sm">
+        <li *ngFor="let r of rules()" class="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2">
+          <div>
+            <div class="font-medium">{{ r.scope | titlecase }} Rule</div>
+            <div class="text-slate-500">Template: {{ r.templateId }} | Enabled: {{ r.enabled }}</div>
+            <div class="text-slate-500" *ngIf="r.conditions">Conditions: {{ r.conditions | json }}</div>
+          </div>
+          <button class="px-2 py-1 rounded border" (click)="toggleRule(r)">{{ r.enabled ? 'Disable' : 'Enable' }}</button>
+        </li>
+      </ul>
+    </div>
+  </section>
+</div>

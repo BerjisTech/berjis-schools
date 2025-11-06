@@ -99,6 +99,69 @@ export class SchoolsService {
     return this.mapLesson(r);
   }
 
+  // --- Gradebook ---
+  async getClassGradebook(classId: string): Promise<{ tests: { id: string; title: string; max: number }[]; students: any[] }> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/gradebook`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? { tests: [], students: [] };
+  }
+
+  async downloadClassGradebookCSV(classId: string): Promise<Blob> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/gradebook.csv`, { credentials: 'include' });
+    const blob = await res.blob();
+    return blob;
+  }
+
+  // --- Certificates ---
+  async listCertificateTemplates(params: { scope?: 'platform'|'school'; schoolId?: string } = {}): Promise<any[]> {
+    const q: string[] = [];
+    if (params.scope) q.push(`scope=${encodeURIComponent(params.scope)}`);
+    if (params.schoolId) q.push(`school_id=${encodeURIComponent(params.schoolId)}`);
+    const res = await fetch(`${this.api}/v1/certificates/templates${q.length?'?'+q.join('&'):''}`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+
+  async createCertificateTemplate(input: { scope: 'platform'|'school'; schoolId?: string; name: string; body?: any; style?: any }): Promise<any> {
+    const res = await fetch(`${this.api}/v1/certificates/templates`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const j = await res.json();
+    return j?.data;
+  }
+
+  async issueCertificate(input: { templateId: string; recipientUserId: string; classId?: string; data?: any }): Promise<{ id: string; code: string }> {
+    const body = { templateId: input.templateId, recipientUserId: input.recipientUserId, classId: input.classId ?? '', data: input.data ?? {} } as any;
+    const res = await fetch(`${this.api}/v1/certificates/issue`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await res.json();
+    return j?.data;
+  }
+
+  async verifyCertificate(code: string): Promise<any> {
+    const res = await fetch(`${this.api}/v1/certificates/verify?code=${encodeURIComponent(code)}`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data;
+  }
+
+  // --- Certificate Rules ---
+  async listCertificateRules(params: { schoolId?: string; classId?: string }): Promise<any[]> {
+    const q: string[] = [];
+    if (params.schoolId) q.push(`school_id=${encodeURIComponent(params.schoolId)}`);
+    if (params.classId) q.push(`class_id=${encodeURIComponent(params.classId)}`);
+    const res = await fetch(`${this.api}/v1/certificates/rules${q.length?'?'+q.join('&'):''}`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+
+  async createCertificateRule(input: { scope: 'class'|'school'; schoolId?: string; classId?: string; templateId: string; enabled?: boolean; conditions?: any }): Promise<any> {
+    const res = await fetch(`${this.api}/v1/certificates/rules`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...input }) });
+    const j = await res.json();
+    return j?.data;
+  }
+
+  async updateCertificateRule(id: string, input: { enabled?: boolean; conditions?: any }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/certificates/rules/${encodeURIComponent(id)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+
   async listTests(filter: { subjectId?: string; lessonId?: string }): Promise<TestItem[]> {
     const url = new URL(`${this.api}/v1/tests`);
     if (filter.subjectId) url.searchParams.set('subject_id', filter.subjectId);
@@ -469,5 +532,147 @@ export class SchoolsService {
       body: JSON.stringify({ status })
     });
     return res.ok;
+  }
+  // --- Discussions & Announcements ---
+  async listDiscussions(classId: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/discussions`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async createDiscussion(classId: string, title: string): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/discussions`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async getDiscussion(id: string): Promise<{ discussion: any; posts: any[] }> {
+    const res = await fetch(`${this.api}/v1/discussions/${encodeURIComponent(id)}`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? { discussion: null, posts: [] };
+  }
+  async postToDiscussion(id: string, body: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/discussions/${encodeURIComponent(id)}/posts`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+    return !!(await res.json())?.success;
+  }
+  async listAnnouncements(classId: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/announcements`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async createAnnouncement(classId: string, input: { title: string; body?: string; pinned?: boolean }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/announcements`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+
+  // --- Direct Messages ---
+  async listMessageThreads(): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/messages/threads`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async getThreadMessages(id: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/messages/threads/${encodeURIComponent(id)}`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async sendThreadMessage(id: string, body: string, attachments?: any): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/messages/threads/${encodeURIComponent(id)}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, attachments }) });
+    return !!(await res.json())?.success;
+  }
+  async startMessageThread(userId: string, classId: string): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/messages/start`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, classId }) });
+    const j = await res.json();
+    return j?.data?.threadId ?? null;
+  }
+
+  // --- Calls ---
+  async startThreadCall(threadId: string, media: 'video'|'audio' = 'video'): Promise<{ url: string; roomCode: string } | null> {
+    const res = await fetch(`${this.api}/v1/messages/threads/${encodeURIComponent(threadId)}/call/start`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media }) });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+  async getThreadCall(threadId: string): Promise<{ url: string } | null> {
+    const res = await fetch(`${this.api}/v1/messages/threads/${encodeURIComponent(threadId)}/call`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+
+  // --- Study Groups ---
+  async listStudyGroups(classId: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/groups`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async createStudyGroup(classId: string, title: string): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/groups`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async joinStudyGroup(groupId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/join`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+  async leaveStudyGroup(groupId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/leave`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+  async listGroupMessages(groupId: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/messages`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async sendGroupMessage(groupId: string, body: string, attachments?: any): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, attachments }) });
+    return !!(await res.json())?.success;
+  }
+  async startGroupCall(groupId: string): Promise<{ url: string; roomCode: string } | null> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/call/start`, { method: 'POST', credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+  // Moderation
+  async listGroupMembers(groupId: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/members`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async setGroupMemberRole(groupId: string, userId: string, role: 'member'|'moderator'|'owner'): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/role`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+    return !!(await res.json())?.success;
+  }
+  async banGroupMember(groupId: string, userId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/ban`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+  async unbanGroupMember(groupId: string, userId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/unban`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+  async deleteGroupMessage(messageId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/groups/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+  async deleteDiscussionPost(postId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/discussions/posts/${encodeURIComponent(postId)}`, { method: 'DELETE', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  // --- Appointments ---
+  async listAppointmentSlots(classId: string): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/appointments/slots`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
+  }
+  async createAppointmentSlot(classId: string, input: { startAt: string; endAt: string; capacity?: number; locationUrl?: string; notes?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/appointments/slots`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async bookAppointmentSlot(slotId: string, forUserId?: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/appointments/slots/${encodeURIComponent(slotId)}/book`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(forUserId?{ forUserId }:{}) });
+    return !!(await res.json())?.success;
+  }
+  async listMyAppointments(): Promise<any[]> {
+    const res = await fetch(`${this.api}/v1/appointments/my`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? [];
   }
 }

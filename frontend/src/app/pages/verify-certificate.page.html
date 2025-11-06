@@ -1,0 +1,20 @@
+<div class="min-h-[60vh] flex items-center justify-center p-6">
+  <div class="w-full max-w-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-brand p-6 space-y-4">
+    <h1 class="text-xl font-semibold text-slate-900 dark:text-white">Verify Certificate</h1>
+    <div class="flex gap-2">
+      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Enter certificate code" [ngModel]="code()" (ngModelChange)="code.set($event)" />
+      <button class="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="verify()" [disabled]="loading()">Verify</button>
+    </div>
+    <div class="text-sm text-slate-500" *ngIf="loading()">Verifying…</div>
+    <div class="text-sm text-red-600" *ngIf="error()">{{ error() }}</div>
+    <div *ngIf="result() as r" class="text-sm space-y-1">
+      <div>Status: <span class="font-medium">{{ r.status }}</span></div>
+      <div>Template: {{ r.template }}</div>
+      <div>Recipient: {{ r.recipient?.name }} ({{ r.recipient?.userId }})</div>
+      <div>Issued: {{ r.issuedAt | date:'mediumDate' }}</div>
+      <div class="pt-2">
+        <a class="text-blue-600 underline" [href]="(r.id && '/v1/certificates/' + r.id + '.pdf?code=' + code())">View PDF</a>
+      </div>
+    </div>
+  </div>
+</div>

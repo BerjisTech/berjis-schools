@@ -1,0 +1,36 @@
+<div class="p-4 md:p-8 space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-semibold text-slate-900">My Transcript</h1>
+    <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="openPdf()">
+      Download PDF
+    </button>
+  </div>
+
+  <div *ngIf="loading()" class="text-slate-500">Loading…</div>
+
+  <div *ngIf="!loading()" class="space-y-3">
+    <div class="text-slate-700">Student: <span class="font-medium">{{ name() }}</span></div>
+    <div class="text-slate-700" *ngIf="overall() !== null">Overall: <span class="font-semibold">{{ overall() | number:'1.0-2' }}%</span></div>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="bg-slate-100">
+            <th class="text-left px-3 py-2">Class</th>
+            <th class="text-left px-3 py-2">Percent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let c of classes()" class="border-t border-slate-200">
+            <td class="px-3 py-2">{{ c.title }}</td>
+            <td class="px-3 py-2">
+              <span *ngIf="c.percent !== null && c.percent !== undefined; else dash">{{ c.percent | number:'1.0-2' }}%</span>
+              <ng-template #dash>—</ng-template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+

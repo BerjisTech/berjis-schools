@@ -8,27 +8,27 @@ This checklist verifies that an educational platform meets all functional requir
 ## 1. USER MANAGEMENT & AUTHENTICATION
 
 ### 1.1 User Types & Roles
-- [ ] System supports distinct user types: Student, Teacher/Tutor, Parent, School Admin, Platform Admin
-- [ ] Users can have multiple roles simultaneously (e.g., teacher at a school AND independent tutor)
-- [ ] Role-based access control (RBAC) is implemented for all features
+- [x] System supports distinct user types: Student, Teacher/Tutor, Parent, School Admin, Platform Admin
+- [x] Users can have multiple roles simultaneously (e.g., teacher at a school AND independent tutor)
+- [x] Role-based access control (RBAC) is implemented for all features
 - [ ] User profiles distinguish between independent and school-affiliated status
 
 ### 1.2 Registration & Onboarding
-- [ ] Student registration flow exists (independent and school-based)
-- [ ] Teacher/Tutor registration with application/vetting workflow
-- [ ] School registration with institutional verification process
-- [ ] Parent registration with student linking capability
-- [ ] Email/phone verification system implemented
+- [x] Student registration flow exists (independent and school-based)
+- [x] Teacher/Tutor registration with application/vetting workflow
+- [x] School registration with institutional verification process
+- [x] Parent registration with student linking capability
+- [x] Email/phone verification system implemented
 - [ ] Multi-language support in registration forms
 
 ### 1.3 Vetting & Approval System
-- [ ] Independent teacher applications queue exists
-- [ ] School submission queue exists
-- [ ] Admin dashboard for reviewing applications
-- [ ] Document upload system for credentials/verification
-- [ ] Approval/rejection workflow with notification system
-- [ ] Status tracking (Pending, Under Review, Approved, Rejected)
-- [ ] Reapplication mechanism for rejected applications
+- [x] Independent teacher applications queue exists
+- [x] School submission queue exists
+- [x] Admin dashboard for reviewing applications
+- [x] Document upload system for credentials/verification
+ - [x] Approval/rejection workflow with notification system
+- [x] Status tracking (Pending, Under Review, Approved, Rejected)
+- [x] Reapplication mechanism for rejected applications
 - [ ] Background check integration capability (optional)
 
 ---
@@ -36,15 +36,15 @@ This checklist verifies that an educational platform meets all functional requir
 ## 2. DUAL-MODE OPERATION (INDEPENDENT vs SCHOOL-BASED)
 
 ### 2.1 User Affiliation Management
-- [ ] Students can enroll as independent OR join a school
-- [ ] Students can belong to multiple schools simultaneously
-- [ ] Teachers can operate independently AND be employed by schools
-- [ ] System tracks primary and secondary affiliations
-- [ ] Affiliation change/transfer mechanism exists
+ - [x] Students can enroll as independent OR join a school
+ - [x] Students can belong to multiple schools simultaneously
+ - [x] Teachers can operate independently AND be employed by schools
+ - [x] System tracks primary and secondary affiliations
+ - [x] Affiliation change/transfer mechanism exists
 
 ### 2.2 Content & Resource Management
-- [ ] Courses can be created as independent OR school-specific
-- [ ] Tests can be independent, school-specific, or shared
+- [x] Courses can be created as independent OR school-specific
+- [x] Tests can be independent, school-specific, or shared
 - [ ] Certifications support independent and institutional issuance
 - [ ] Visibility controls (public, school-only, private)
 - [ ] Content ownership and licensing tracking
@@ -54,31 +54,31 @@ This checklist verifies that an educational platform meets all functional requir
 ## 3. EDUCATIONAL CONTENT MANAGEMENT
 
 ### 3.1 Course System
-- [ ] Course creation interface for teachers
-- [ ] Course catalog/marketplace for independent courses
-- [ ] School-specific course library
+- [x] Course creation interface for teachers
+- [x] Course catalog/marketplace for independent courses
+- [x] School-specific course library
 - [ ] Course enrollment mechanism (paid and free)
-- [ ] Curriculum/syllabus builder
-- [ ] Multi-format content support (video, documents, interactive)
+- [x] Curriculum/syllabus builder
+- [x] Multi-format content support (video, documents, interactive)
 - [ ] Course prerequisites and progression tracking
 - [ ] Course versioning and updates
 
 ### 3.2 Assessment System
-- [ ] Test/quiz creation tools
-- [ ] Multiple question types (MCQ, essay, practical, etc.)
-- [ ] Automated and manual grading options
+- [x] Test/quiz creation tools
+- [x] Multiple question types (MCQ, essay, practical, etc.)
+- [x] Automated and manual grading options
 - [ ] Test scheduling and proctoring features
-- [ ] Grade book and transcript generation
+ - [x] Grade book and transcript generation
 - [ ] Performance analytics and reporting
 - [ ] Adaptive testing capability (optional)
 
 ### 3.3 Certification System
-- [ ] Certificate template designer
-- [ ] Automated certificate generation on completion
-- [ ] Digital certificate verification system
-- [ ] Independent certification issuance
-- [ ] School-branded certification
-- [ ] Certificate revocation mechanism
+- [x] Certificate template designer
+- [x] Automated certificate generation on completion
+- [x] Digital certificate verification system
+- [x] Independent certification issuance
+- [x] School-branded certification
+- [x] Certificate revocation mechanism
 - [ ] Blockchain/cryptographic verification (optional)
 
 ---
@@ -89,16 +89,28 @@ This checklist verifies that an educational platform meets all functional requir
 - [ ] Student-to-student discussion forums
 - [ ] Study group creation and management
 - [ ] Collaborative document editing
+  - [ ] Use existing Berjis tools (no new editors): docs.berjis.tech, sheets.berjis.tech, notes.berjis.tech, pdf.berjis.tech, slides.berjis.tech
+  - [ ] SSO via Core API; seamless auth from Schools app to editors
+  - [ ] Permissions model (map to class/group/school roles):
+    - [ ] Owner: full control
+    - [ ] Editor: edit content
+    - [ ] Commenter/Annotator: can leave comments/notes (no content edits)
+    - [ ] Viewer: view-only
+  - [ ] ACL sources supported: Class, Study Group, School, Individual share
+  - [ ] PDF: annotations enabled for Commenter, view-only for Viewer
+  - [ ] Slides: presenter can edit; viewers can comment when allowed
+  - [ ] Share dialogs respect unified roles; revocation propagates
+  - [ ] Audit: who changed what (editor history)
 - [ ] Peer review and feedback system
 - [ ] Version control for collaborative work
 - [ ] Group project management tools
 
 ### 4.2 One-on-One Communication
-- [ ] Teacher-student private messaging
-- [ ] Parent-teacher private messaging
+- [x] Teacher-student private messaging
+- [x] Parent-teacher private messaging
 - [ ] Video call integration (1-on-1)
-- [ ] Appointment/office hours scheduling
-- [ ] File sharing in private conversations
+- [x] Appointment/office hours scheduling
+- [x] File sharing in private conversations
 - [ ] Conversation history and archiving
 
 ### 4.3 Group Communication

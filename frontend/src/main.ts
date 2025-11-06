@@ -20,6 +20,14 @@ import { SearchPage } from './app/pages/search.page';
 import { authGuard } from './app/guards/auth.guard';
 import { MyCoursesPage } from './app/pages/my-courses.page';
 import { CreateSchoolPage } from './app/pages/create-school.page';
+import { GradebookPage } from './app/pages/gradebook.page';
+import { TranscriptPage } from './app/pages/transcript.page';
+import { DiscussionsPage } from './app/pages/discussions.page';
+import { GroupsPage } from './app/pages/groups.page';
+import { ClassAppointmentsPage } from './app/pages/class-appointments.page';
+import { CertificatesPage } from './app/pages/certificates.page';
+import { VerifyCertificatePage } from './app/pages/verify-certificate.page';
+import { MessagesPage } from './app/pages/messages.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -40,9 +48,17 @@ const routes: Routes = [
   { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage), canActivate: [authGuard] },
   { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage), canActivate: [authGuard] },
   { path: 'courses/mine', loadComponent: () => Promise.resolve(MyCoursesPage), canActivate: [authGuard] },
+  { path: 'gradebook', loadComponent: () => Promise.resolve(GradebookPage), canActivate: [authGuard] },
+  { path: 'transcript', loadComponent: () => Promise.resolve(TranscriptPage), canActivate: [authGuard] },
+  { path: 'certificates', loadComponent: () => Promise.resolve(CertificatesPage), canActivate: [authGuard] },
+  { path: 'verify', loadComponent: () => Promise.resolve(VerifyCertificatePage) },
+  { path: 'messages', loadComponent: () => Promise.resolve(MessagesPage), canActivate: [authGuard] },
   { path: 'course/:id', component: CourseOverviewComponent },
   { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent, canActivate: [authGuard] },
   { path: 'course/:id/tests/:testId', component: TestViewComponent, canActivate: [authGuard] },
+  { path: 'class/:id/discussions', loadComponent: () => Promise.resolve(DiscussionsPage), canActivate: [authGuard] },
+  { path: 'class/:id/groups', loadComponent: () => Promise.resolve(GroupsPage), canActivate: [authGuard] },
+  { path: 'class/:id/appointments', loadComponent: () => Promise.resolve(ClassAppointmentsPage), canActivate: [authGuard] },
   { path: 'search', loadComponent: () => Promise.resolve(SearchPage) },
 ];
 

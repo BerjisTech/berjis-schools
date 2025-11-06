@@ -1,0 +1,38 @@
+<div class="p-4 md:p-8 grid md:grid-cols-12 gap-6">
+  <div class="md:col-span-4 space-y-3">
+    <div class="flex gap-2">
+      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="New group title" [ngModel]="newTitle()" (ngModelChange)="newTitle.set($event)" />
+      <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="create()">Create</button>
+    </div>
+    <ul class="space-y-1 text-sm">
+      <li *ngFor="let g of groups()" class="border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer" (click)="open(g.id)">{{ g.title }}</li>
+    </ul>
+  </div>
+  <div class="md:col-span-8 space-y-4" *ngIf="selectedId()">
+    <div>
+      <h3 class="text-sm font-semibold">Members</h3>
+      <ul class="text-sm space-y-1">
+        <li *ngFor="let m of members()" class="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2">
+          <div>{{ m.userID || m.userId }} · <span class="text-slate-500">{{ m.role }}/{{ m.status }}</span></div>
+          <div class="flex items-center gap-2">
+            <button class="px-2 py-1 rounded border" (click)="setRole(m.userID || m.userId, 'moderator')">Make Mod</button>
+            <button class="px-2 py-1 rounded border" (click)="setRole(m.userID || m.userId, 'member')">Make Member</button>
+            <button class="px-2 py-1 rounded border text-red-600" *ngIf="m.status!=='banned'" (click)="ban(m.userID || m.userId)">Ban</button>
+            <button class="px-2 py-1 rounded border text-emerald-600" *ngIf="m.status==='banned'" (click)="unban(m.userID || m.userId)">Unban</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    <div class="space-y-2 max-h-[60vh] overflow-y-auto">
+      <div *ngFor="let m of messages()" class="border border-slate-200 rounded-lg px-3 py-2">
+        <div class="text-xs text-slate-500">{{ m.sender }}  {{ m.createdAt | date:'short' }}</div>
+        <div class="text-sm">{{ m.body }}</div>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Message group" [ngModel]="compose()" (ngModelChange)="compose.set($event)" />
+      <button class="px-3 py-2 rounded-lg border text-sm" (click)="startCall()">Start Call</button>
+      <button class="px-3 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="send()">Send</button>
+    </div>
+  </div>
+</div>
