@@ -1,0 +1,54 @@
+<div class="p-4 md:p-8 space-y-6">
+  <h2 class="text-xl font-semibold">Sections</h2>
+  <div class="flex items-center gap-3">
+    <label class="text-sm">School</label>
+    <select class="border rounded px-3 py-2" [ngModel]="selectedSchool()" (ngModelChange)="selectedSchool.set($event); loadSections()">
+      <option *ngFor="let s of schools" [ngValue]="s.id">{{ s.name }}</option>
+    </select>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-8">
+    <div class="space-y-3">
+      <h3 class="font-medium">All sections</h3>
+      <div class="space-y-2">
+        <div class="border rounded px-3 py-2" *ngFor="let s of sections()" (click)="openSection(s.id)" role="button" tabindex="0">
+          <div class="font-medium">{{ s.name }}</div>
+          <div class="text-xs text-slate-600">{{ s.gradeLevel || '—' }}</div>
+        </div>
+      </div>
+      <form class="space-y-2 border rounded p-3" (submit)="$event.preventDefault(); createSection()">
+        <div class="text-sm font-medium">Create section</div>
+        <input class="border rounded px-3 py-2 w-full" placeholder="Section name" [(ngModel)]="newSection.name" name="name" />
+        <input class="border rounded px-3 py-2 w-full" placeholder="Grade level (optional)" [(ngModel)]="newSection.gradeLevel" name="grade" />
+        <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy">Add section</button>
+      </form>
+    </div>
+
+    <div class="space-y-3">
+      <h3 class="font-medium">Members</h3>
+      <div *ngIf="!selectedSection()" class="text-sm text-slate-600">Select a section to manage members.</div>
+      <div *ngIf="selectedSection()" class="space-y-2">
+        <form class="space-y-2" (submit)="$event.preventDefault(); addMember()">
+          <div class="relative">
+            <input class="border rounded px-3 py-2 w-full" [(ngModel)]="studentSearch" (ngModelChange)="onTypeahead($event)" name="search" placeholder="Search student by name or ID" />
+            <div class="absolute z-10 mt-1 w-full bg-white border rounded shadow max-h-60 overflow-auto" *ngIf="studentSearch && (studentChoices() | json) as _">
+              <div *ngFor="let s of studentChoices() | slice:0:10" class="px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer" (click)="addMemberId=s.userId; studentSearch=s.label;">
+                {{ s.label }}
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <input class="border rounded px-3 py-2 flex-1" [(ngModel)]="addMemberId" name="member" placeholder="Or paste student user UUID" />
+            <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy">Add</button>
+          </div>
+        </form>
+        <div class="space-y-2 text-sm">
+          <div *ngFor="let m of members()" class="border rounded px-3 py-2 flex items-center justify-between">
+            <span>{{ m.studentUserId }}</span>
+            <button class="px-2 py-1 text-red-600" (click)="removeMember(m.studentUserId)">Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

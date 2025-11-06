@@ -37,8 +37,16 @@
         <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'after_each_lesson'})">After each lesson</button>
         <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'after_every_n_lessons', n: 5})">After every 5 lessons</button>
         <button class="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50" (click)="updatePlacement({kind:'random', count: 3})">Random</button>
+        <a *ngIf="isOwner()" [routerLink]="['/class', c.id, 'attendance']" class="ml-auto px-3 py-1 rounded bg-blue-700 text-white">Mark attendance</a>
       </div>
   </section>
+
+    <section *ngIf="isOwner()" class="border border-gray-200 rounded-2xl bg-white shadow-sm p-5">
+      <div class="flex items-center gap-3">
+        <div class="font-semibold">Versions</div>
+        <button class="px-3 py-1 rounded border" (click)="saveVersion(c.id)">Save new version</button>
+      </div>
+    </section>
 
     <!-- Class Resources Panel -->
     <section class="border border-sky-200 rounded-2xl bg-sky-50/50 p-5 space-y-4">
@@ -47,6 +55,21 @@
         <span class="text-xs text-slate-500">Materials shared with everyone in this class</span>
       </div>
       <app-resources-panel [scope]="'class'" [scopeId]="c.id" [canManage]="isOwner()" [quickPrincipal]="{ type: 'class', id: c.id, label: 'Class' }"></app-resources-panel>
+    </section>
+
+    <!-- Peer Reviews -->
+    <section class="border border-gray-200 rounded-2xl bg-white shadow-sm p-5 space-y-3">
+      <div class="flex items-center gap-2">
+        <div class="font-semibold">Peer Reviews</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-sm">Rating</label>
+        <select #prating class="border rounded px-2 py-1">
+          <option *ngFor="let r of [1,2,3,4,5]" [value]="r">{{ r }}</option>
+        </select>
+        <input #pcomment class="flex-1 border rounded px-3 py-2" placeholder="Comment (optional)" />
+        <button class="px-3 py-2 rounded bg-blue-600 text-white" (click)="submitReview(c.id, +prating.value, pcomment.value); pcomment.value=''">Submit</button>
+      </div>
     </section>
 
     <!-- Share Modal for class resources -->

@@ -31,6 +31,10 @@ import { MessagesPage } from './app/pages/messages.page';
 import { ReceiptPage } from './app/pages/receipt.page';
 import { PaymentSettingsPage } from './app/pages/payment-settings.page';
 import { MyPurchasesPage } from './app/pages/my-purchases.page';
+import { FeedbackPage } from './app/pages/feedback.page';
+import { YearsTermsPage } from './app/pages/years-terms.page';
+import { SectionsPage } from './app/pages/sections.page';
+import { ClassAttendancePage } from './app/pages/class-attendance.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -59,6 +63,10 @@ const routes: Routes = [
   { path: 'purchases', loadComponent: () => Promise.resolve(MyPurchasesPage), canActivate: [authGuard] },
   { path: 'receipt/:id', loadComponent: () => Promise.resolve(ReceiptPage), canActivate: [authGuard] },
   { path: 'settings/payments', loadComponent: () => Promise.resolve(PaymentSettingsPage), canActivate: [authGuard] },
+  { path: 'feedback', loadComponent: () => Promise.resolve(FeedbackPage), canActivate: [authGuard] },
+  { path: 'schools/years', loadComponent: () => Promise.resolve(YearsTermsPage), canActivate: [authGuard] },
+  { path: 'schools/sections', loadComponent: () => Promise.resolve(SectionsPage), canActivate: [authGuard] },
+  { path: 'class/:id/attendance', loadComponent: () => Promise.resolve(ClassAttendancePage), canActivate: [authGuard] },
   { path: 'course/:id', component: CourseOverviewComponent },
   { path: 'course/:id/lessons/:lessonId', component: LessonViewComponent, canActivate: [authGuard] },
   { path: 'course/:id/tests/:testId', component: TestViewComponent, canActivate: [authGuard] },
@@ -69,3 +77,18 @@ const routes: Routes = [
 ];
 
 bootstrapApplication(AppComponent, { providers: [provideRouter(routes)] }).catch(err => console.error(err));
+
+// Basic client error tracking to Schools API
+try {
+  const api = (window as any).SCHOOLS_API || (window.location.origin);
+  window.addEventListener('error', (e) => {
+    try {
+      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e.message || 'error'), url: window.location.href, stack: String((e as any).error?.stack || ''), context: { filename: (e as any).filename, lineno: (e as any).lineno, colno: (e as any).colno } }) }).catch(() => { });
+    } catch { }
+  });
+  window.addEventListener('unhandledrejection', (e: any) => {
+    try {
+      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e?.reason?.message || 'unhandledrejection'), url: window.location.href, stack: String(e?.reason?.stack || ''), context: {} }) }).catch(() => { });
+    } catch { }
+  });
+} catch { }

@@ -1,0 +1,88 @@
+<div class="p-4 md:p-8 space-y-6">
+  <h2 class="text-xl font-semibold">Academic Years & Terms</h2>
+  <div class="flex items-center gap-3">
+    <label class="text-sm">School</label>
+    <select class="border rounded px-3 py-2" [ngModel]="selectedSchool()" (ngModelChange)="selectedSchool.set($event); loadYears()">
+      <option *ngFor="let s of schools" [ngValue]="s.id">{{ s.name }}</option>
+    </select>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-8">
+    <div class="space-y-3">
+      <h3 class="font-medium">Years</h3>
+      <div class="space-y-2">
+        <div class="border rounded px-3 py-2" *ngFor="let y of years()">
+          <div *ngIf="editYearId()!==y.id" class="flex items-center justify-between">
+            <div class="cursor-pointer" (click)="openYear(y.id)">
+              <div class="font-medium">{{ y.name }}</div>
+              <div class="text-xs text-slate-600">{{ y.startDate || '—' }} → {{ y.endDate || '—' }} • {{ y.status }}</div>
+            </div>
+            <button class="text-xs px-2 py-1 rounded border" (click)="startEditYear(y)">Edit</button>
+          </div>
+          <div *ngIf="editYearId()===y.id" class="space-y-2">
+            <input class="border rounded px-3 py-2 w-full" [(ngModel)]="editYear.name" name="eyname" />
+            <div class="grid grid-cols-2 gap-2">
+              <input type="date" class="border rounded px-3 py-2" [(ngModel)]="editYear.startDate" name="eystart" />
+              <input type="date" class="border rounded px-3 py-2" [(ngModel)]="editYear.endDate" name="eyend" />
+            </div>
+            <select class="border rounded px-3 py-2" [(ngModel)]="editYear.status" name="eystatus">
+              <option value="planned">planned</option>
+              <option value="active">active</option>
+              <option value="completed">completed</option>
+              <option value="archived">archived</option>
+            </select>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 rounded bg-blue-700 text-white" (click)="saveYear()" [disabled]="busy">Save</button>
+              <button class="px-3 py-1 rounded border" (click)="cancelYearEdit()">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <form class="space-y-2 border rounded p-3" (submit)="$event.preventDefault(); createYear()">
+        <div class="text-sm font-medium">Create year</div>
+        <input class="border rounded px-3 py-2 w-full" placeholder="Year name (e.g., 2025/2026)" [(ngModel)]="yn.name" name="name" />
+        <div class="grid grid-cols-2 gap-2">
+          <input class="border rounded px-3 py-2" type="date" [(ngModel)]="yn.startDate" name="startDate" />
+          <input class="border rounded px-3 py-2" type="date" [(ngModel)]="yn.endDate" name="endDate" />
+        </div>
+        <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy">Add year</button>
+      </form>
+    </div>
+
+    <div class="space-y-3">
+      <h3 class="font-medium">Terms</h3>
+      <div *ngIf="!selectedYear()" class="text-sm text-slate-600">Select a year to manage terms.</div>
+      <div *ngIf="selectedYear()" class="space-y-2">
+        <div *ngFor="let t of terms()" class="border rounded px-3 py-2">
+          <div *ngIf="editTermId()!==t.id" class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">{{ t.name }}</div>
+              <div class="text-xs text-slate-600">{{ t.startDate || '—' }} → {{ t.endDate || '—' }}</div>
+            </div>
+            <button class="text-xs px-2 py-1 rounded border" (click)="startEditTerm(t)">Edit</button>
+          </div>
+          <div *ngIf="editTermId()===t.id" class="space-y-2">
+            <input class="border rounded px-3 py-2 w-full" [(ngModel)]="editTerm.name" name="etname" />
+            <div class="grid grid-cols-2 gap-2">
+              <input type="date" class="border rounded px-3 py-2" [(ngModel)]="editTerm.startDate" name="etstart" />
+              <input type="date" class="border rounded px-3 py-2" [(ngModel)]="editTerm.endDate" name="etend" />
+            </div>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 rounded bg-blue-700 text-white" (click)="saveTerm()" [disabled]="busy">Save</button>
+              <button class="px-3 py-1 rounded border" (click)="cancelTermEdit()">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <form class="space-y-2 border rounded p-3" (submit)="$event.preventDefault(); createTerm()">
+          <div class="text-sm font-medium">Create term</div>
+          <input class="border rounded px-3 py-2 w-full" placeholder="Term name (e.g., Term 1)" [(ngModel)]="tn.name" name="tname" />
+          <div class="grid grid-cols-2 gap-2">
+            <input class="border rounded px-3 py-2" type="date" [(ngModel)]="tn.startDate" name="tstart" />
+            <input class="border rounded px-3 py-2" type="date" [(ngModel)]="tn.endDate" name="tend" />
+          </div>
+          <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy">Add term</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

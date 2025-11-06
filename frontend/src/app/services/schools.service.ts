@@ -642,6 +642,129 @@ export class SchoolsService {
     const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, attachments }) });
     return !!(await res.json())?.success;
   }
+
+  // Feedback and bug reports
+  async submitFeedback(input: { category: 'ux'|'feature'|'content'|'other'; message: string; context?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/feedback`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async listMyFeedback(): Promise<Array<{ id: string; category: string; message: string; context?: string; createdAt: string }>> {
+    const res = await fetch(`${this.api}/v1/feedback/mine`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async reportBug(input: { severity: 'low'|'medium'|'high'|'critical'; title: string; details?: string; url?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/bugs`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async listMyBugs(): Promise<Array<{ id: string; severity: string; title: string; details?: string; url?: string; createdAt: string }>> {
+    const res = await fetch(`${this.api}/v1/bugs/mine`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  // SMS: Years & Terms
+  async listYears(schoolId: string): Promise<Array<{ id: string; name: string; status: string; startDate?: string; endDate?: string }>> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/years`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []).map((r: any) => ({ id: r.id, name: r.name, status: r.status, startDate: r.startDate, endDate: r.endDate }));
+  }
+  async createYear(schoolId: string, input: { name: string; startDate?: string; endDate?: string; status?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/years`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async updateYear(yearId: string, input: { name?: string; status?: string; startDate?: string; endDate?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/years/${encodeURIComponent(yearId)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async listTerms(yearId: string): Promise<Array<{ id: string; name: string; startDate?: string; endDate?: string }>> {
+    const res = await fetch(`${this.api}/v1/years/${encodeURIComponent(yearId)}/terms`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []).map((r: any) => ({ id: r.id, name: r.name, startDate: r.startDate, endDate: r.endDate }));
+  }
+  async createTerm(yearId: string, input: { name: string; startDate?: string; endDate?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/years/${encodeURIComponent(yearId)}/terms`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async updateTerm(termId: string, input: { name?: string; startDate?: string; endDate?: string }): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/terms/${encodeURIComponent(termId)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+
+  // SMS: Sections
+  async listSections(schoolId: string): Promise<Array<{ id: string; name: string; gradeLevel?: string }>> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/sections`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async listSchoolStudents(schoolId: string): Promise<Array<{ userId: string; displayName?: string; admissionNo?: string; gradeLevel?: string }>> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/students`, { credentials: 'include' });
+    const j = await res.json();
+    const rows: any[] = j?.data ?? [];
+    return rows.map(r => ({ userId: r.userId || r.user_id, displayName: r.displayName || r.display_name, admissionNo: r.admissionNo || r.admission_no, gradeLevel: r.gradeLevel || r.grade_level }));
+  }
+  async createSection(schoolId: string, input: { name: string; gradeLevel?: string }): Promise<{ id?: string } | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/sections`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+  async listSectionMembers(sectionId: string): Promise<Array<{ studentUserId: string }>> {
+    const res = await fetch(`${this.api}/v1/sections/${encodeURIComponent(sectionId)}/members`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async addSectionMember(sectionId: string, studentUserId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/sections/${encodeURIComponent(sectionId)}/members`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentUserId }) });
+    return !!(await res.json())?.success;
+  }
+  async removeSectionMember(sectionId: string, studentUserId: string): Promise<boolean> {
+    const url = new URL(`${this.api}/v1/sections/${encodeURIComponent(sectionId)}/members`);
+    url.searchParams.set('student', studentUserId);
+    const res = await fetch(url.toString(), { method: 'DELETE', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  // Attendance helpers
+  async getClassRoster(classId: string): Promise<Array<{ userId: string; name: string }>> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/gradebook`, { credentials: 'include' });
+    const j = await res.json();
+    const rows: Array<{ userId: string; name: string }> = (j?.data?.students ?? []).map((s: any) => ({ userId: s.userId, name: s.name || s.userId }));
+    return rows;
+  }
+  async getAttendance(classId: string, day?: string): Promise<Array<{ studentUserId: string; status: string; day: string }>> {
+    const url = new URL(`${this.api}/v1/classes/${encodeURIComponent(classId)}/attendance`);
+    if (day) url.searchParams.set('day', day);
+    const res = await fetch(url.toString(), { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async markAttendance(classId: string, day: string, entries: Array<{ studentUserId: string; status: 'present'|'absent'|'late'|'excused' }>): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/attendance/mark`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day, entries }) });
+    return !!(await res.json())?.success;
+  }
+
+  // Class versions
+  async listClassVersions(classId: string): Promise<Array<{ id: string; version: number; title: string; description: string; createdAt: string }>> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/versions`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async createClassVersion(classId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/versions`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  // Peer reviews
+  async listPeerReviews(classId: string): Promise<{ reviews: Array<{ reviewerUserId: string; rating?: number; comment: string; createdAt: string }>; average?: number } | null> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/peer-reviews`, { credentials: 'include' });
+    if (!res.ok) return null;
+    return (await res.json())?.data ?? null;
+  }
+  async submitPeerReview(classId: string, rating: number, comment: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/peer-reviews`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, comment }) });
+    return !!(await res.json())?.success;
+  }
   async startGroupCall(groupId: string): Promise<{ url: string; roomCode: string } | null> {
     const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/call/start`, { method: 'POST', credentials: 'include' });
     const j = await res.json();

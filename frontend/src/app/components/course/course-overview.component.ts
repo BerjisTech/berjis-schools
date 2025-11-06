@@ -554,4 +554,18 @@ export class CourseOverviewComponent implements OnInit {
   }
 
   // (no local helpers; panel handles resources)
+
+  async saveVersion(classId: string) {
+    try {
+      const ok = await this.svc.createClassVersion(classId);
+      if (ok) this.toast.set({ kind: 'success', text: 'Saved new version' });
+    } catch {}
+  }
+
+  async submitReview(classId: string, rating: number, comment: string) {
+    try {
+      const ok = await this.svc.submitPeerReview(classId, rating, comment);
+      if (ok) this.toast.set({ kind: 'success', text: 'Thanks for your review' });
+    } catch {}
+  }
 }

@@ -1,0 +1,22 @@
+<div class="p-4 md:p-8 space-y-4">
+  <h2 class="text-xl font-semibold">Class Attendance</h2>
+  <div class="flex items-center gap-3">
+    <label class="text-sm">Date</label>
+    <input type="date" class="border rounded px-3 py-2" [(ngModel)]="day" (change)="load()" />
+    <button class="px-3 py-2 rounded bg-blue-700 text-white" (click)="save()" [disabled]="busy">Save</button>
+  </div>
+  <div class="border rounded divide-y">
+    <div *ngFor="let s of roster()" class="flex items-center justify-between px-3 py-2 text-sm">
+      <div class="font-medium">{{ s.name }}</div>
+      <div class="flex items-center gap-2">
+        <select class="border rounded px-2 py-1" [ngModel]="current()[s.userId] || 'present'" (ngModelChange)="setStatus(s.userId, $event)">
+          <option value="present">Present</option>
+          <option value="absent">Absent</option>
+          <option value="late">Late</option>
+          <option value="excused">Excused</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+

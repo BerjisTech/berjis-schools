@@ -13,7 +13,7 @@
       <audio controls [src]="l.content?.url" class="w-full"></audio>
     </div>
     <div *ngIf="contentKind() === 'video'">
-      <video controls [src]="l.content?.url" class="w-full max-h-[60vh]"></video>
+      <video controls playsinline preload="metadata" controlsList="nodownload" [src]="l.content?.url" class="w-full max-h-[60vh]"></video>
     </div>
     <div *ngIf="contentKind() === 'simulation'" class="p-4 border rounded space-y-3 bg-gray-50">
       <div class="font-semibold text-gray-800">Simulation Playground</div>

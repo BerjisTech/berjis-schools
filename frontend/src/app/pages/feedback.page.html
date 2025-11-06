@@ -1,0 +1,80 @@
+<div class="p-4 md:p-8 space-y-6">
+  <h2 class="text-xl font-semibold">Feedback & Bug Reports</h2>
+  <div class="flex gap-3 text-sm">
+    <button class="px-3 py-1 rounded-lg border" [class.bg-blue-600]="tab()==='feedback'" [class.text-white]="tab()==='feedback'" (click)="tab.set('feedback')">Feedback</button>
+    <button class="px-3 py-1 rounded-lg border" [class.bg-blue-600]="tab()==='bug'" [class.text-white]="tab()==='bug'" (click)="tab.set('bug')">Report a bug</button>
+  </div>
+
+  <div *ngIf="tab()==='feedback'" class="grid md:grid-cols-2 gap-6">
+    <form (submit)="$event.preventDefault(); submitFeedback()" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium mb-1">Category</label>
+        <select class="border rounded px-3 py-2 w-full" [(ngModel)]="fCategory" name="fCategory">
+          <option value="ux">UX / Usability</option>
+          <option value="feature">New Feature</option>
+          <option value="content">Content</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Message</label>
+        <textarea class="border rounded px-3 py-2 w-full" rows="4" [(ngModel)]="fMessage" name="fMessage" placeholder="Share your thoughts"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Context (optional)</label>
+        <input class="border rounded px-3 py-2 w-full" [(ngModel)]="fContext" name="fContext" placeholder="e.g., page URL or steps" />
+      </div>
+      <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy" type="submit">Submit</button>
+    </form>
+
+    <div>
+      <h3 class="font-medium mb-2">My feedback</h3>
+      <div class="space-y-2 text-sm">
+        <div *ngFor="let f of fList" class="border rounded px-3 py-2">
+          <div class="text-xs text-slate-500">{{ f.createdAt | date:'short' }} • {{ f.category }}</div>
+          <div>{{ f.message }}</div>
+          <div *ngIf="f.context" class="text-xs text-slate-500">{{ f.context }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="tab()==='bug'" class="grid md:grid-cols-2 gap-6">
+    <form (submit)="$event.preventDefault(); reportBug()" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium mb-1">Severity</label>
+        <select class="border rounded px-3 py-2 w-full" [(ngModel)]="bSeverity" name="bSeverity">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Title</label>
+        <input class="border rounded px-3 py-2 w-full" [(ngModel)]="bTitle" name="bTitle" placeholder="Brief summary" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Details</label>
+        <textarea class="border rounded px-3 py-2 w-full" rows="4" [(ngModel)]="bDetails" name="bDetails" placeholder="Steps to reproduce, expected vs actual"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">URL (optional)</label>
+        <input class="border rounded px-3 py-2 w-full" [(ngModel)]="bUrl" name="bUrl" placeholder="Page where the issue occurred" />
+      </div>
+      <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy" type="submit">Report</button>
+    </form>
+    <div>
+      <h3 class="font-medium mb-2">My bug reports</h3>
+      <div class="space-y-2 text-sm">
+        <div *ngFor="let b of bList" class="border rounded px-3 py-2">
+          <div class="text-xs text-slate-500">{{ b.createdAt | date:'short' }} • {{ b.severity }}</div>
+          <div class="font-medium">{{ b.title }}</div>
+          <div *ngIf="b.details">{{ b.details }}</div>
+          <a *ngIf="b.url" [href]="b.url" class="text-blue-600 underline text-xs" target="_blank" rel="noopener noreferrer">{{ b.url }}</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

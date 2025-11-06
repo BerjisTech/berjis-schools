@@ -190,7 +190,7 @@ func New(opts Options) *fiber.App {
 		if details != nil {
 			d, _ = json.Marshal(details)
 		}
-    _, _ = opts.DB.Exec(`INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, details) VALUES ($1,$2,$3,$4,COALESCE($5,'{}'::jsonb))`, actor, action, nullIfEmptyStr(targetType), nullIfEmptyStr(targetID), nullIfEmptyJSON(d))
+		_, _ = opts.DB.Exec(`INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, details) VALUES ($1,$2,$3,$4,COALESCE($5,'{}'::jsonb))`, actor, action, nullIfEmptyStr(targetType), nullIfEmptyStr(targetID), nullIfEmptyJSON(d))
 	}
 	// Upload feature flags
 	uploadEnabled := true
@@ -288,6 +288,7 @@ func New(opts Options) *fiber.App {
 		urlPath := "/uploads/" + day + "/" + name
 		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"url": urlPath, "filename": fh.Filename}})
 	})
+
 	// Auth verify against Core API
 	getUserID := func(c *fiber.Ctx) (string, error) {
 		req, _ := http.NewRequest("GET", strings.TrimRight(opts.CoreAPIBase, "/")+"/v1/auth/verify", nil)
@@ -327,6 +328,70 @@ func New(opts Options) *fiber.App {
 		}
 		return "", fiber.ErrUnauthorized
 	}
+
+	// --- AI settings endpoints ---
+	app.Get("/v1/ai/settings", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var row struct {
+			Enabled  *bool   `db:"ai_enabled"`
+			Level    *string `db:"content_level"`
+			Guardian *bool   `db:"guardian_controlled"`
+		}
+		_ = opts.DB.Get(&row, `SELECT ai_enabled, content_level, guardian_controlled FROM ai_settings WHERE user_id=$1`, uid)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"enabled": row.Enabled == nil || *row.Enabled, "contentLevel": coalesceString(row.Level), "guardianControlled": row.Guardian != nil && *row.Guardian}})
+	})
+	app.Patch("/v1/ai/settings", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var b struct {
+			Enabled      *bool   `json:"enabled"`
+			ContentLevel *string `json:"contentLevel"`
+		}
+		_ = c.BodyParser(&b)
+		_, err = opts.DB.Exec(`INSERT INTO ai_settings (user_id, ai_enabled, content_level) VALUES ($1, COALESCE($2,TRUE), COALESCE($3,'general'))
+			ON CONFLICT (user_id) DO UPDATE SET ai_enabled=COALESCE($2, ai_settings.ai_enabled), content_level=COALESCE($3, ai_settings.content_level), updated_at=now()`, uid, b.Enabled, b.ContentLevel)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Post("/v1/ai/settings/:child", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		child := c.Params("child")
+		var ok bool
+		_ = opts.DB.Get(&ok, `SELECT EXISTS (SELECT 1 FROM guardians_children WHERE guardian_user_id=$1 AND child_user_id=$2)`, uid, child)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var b struct {
+			Enabled      *bool   `json:"enabled"`
+			ContentLevel *string `json:"contentLevel"`
+		}
+		_ = c.BodyParser(&b)
+		_, err = opts.DB.Exec(`INSERT INTO ai_settings (user_id, ai_enabled, content_level, guardian_controlled) VALUES ($1, COALESCE($2,TRUE), COALESCE($3,'general'), TRUE)
+			ON CONFLICT (user_id) DO UPDATE SET ai_enabled=COALESCE($2, ai_settings.ai_enabled), content_level=COALESCE($3, ai_settings.content_level), guardian_controlled=TRUE, updated_at=now()`, child, b.Enabled, b.ContentLevel)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
 
 	// User affiliation summary (independent vs schools and primary)
 	app.Get("/v1/users/:id/affiliation", func(c *fiber.Ctx) error {
@@ -3342,6 +3407,578 @@ func New(opts Options) *fiber.App {
 		}
 		return c.JSON(fiber.Map{"success": true, "data": rows})
 	})
+
+	// --- SMS: Staff (filtered members) ---
+	app.Get("/v1/schools/:id/staff", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		member, _ := auth.IsSchoolMember(opts.DB, sid, uid)
+		if !member {
+			return fiber.ErrForbidden
+		}
+		var rows []struct{ UserID, Role, Status string }
+		if err := opts.DB.Select(&rows, `SELECT user_id, role, status FROM school_members WHERE school_id=$1 AND role IN ('admin','tutor') ORDER BY role, user_id`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// --- SMS: Students (SIS) ---
+	app.Get("/v1/schools/:id/students", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var rows []struct{ UserID, AdmissionNo, GradeLevel, Status, DisplayName string }
+		q := `SELECT m.user_id AS user_id,
+			COALESCE(r.admission_no,'') AS admission_no,
+			COALESCE(r.grade_level,'') AS grade_level,
+			COALESCE(r.status,'active') AS status,
+			COALESCE(up.display_name,'') AS display_name
+			FROM school_members m
+			LEFT JOIN student_records r ON r.school_id=m.school_id AND r.student_user_id=m.user_id
+			LEFT JOIN user_profiles up ON up.user_id=m.user_id
+			WHERE m.school_id=$1 AND m.role='student' AND m.status='active' ORDER BY up.display_name NULLS LAST, m.user_id`
+		if err := opts.DB.Select(&rows, q, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	app.Post("/v1/schools/:id/students", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct{ UserID, AdmissionNo, GradeLevel, Status string }
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.UserID) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, _ = opts.DB.Exec(`INSERT INTO school_members (school_id, user_id, role) VALUES ($1,$2,'student') ON CONFLICT DO NOTHING`, sid, body.UserID)
+		_, err = opts.DB.Exec(`INSERT INTO student_records (school_id, student_user_id, admission_no, grade_level, status)
+			VALUES ($1,$2, NULLIF($3,''), NULLIF($4,''), COALESCE(NULLIF($5,''),'active'))
+			ON CONFLICT (school_id, student_user_id) DO UPDATE SET admission_no=EXCLUDED.admission_no, grade_level=EXCLUDED.grade_level, status=EXCLUDED.status, updated_at=now()`, sid, body.UserID, body.AdmissionNo, body.GradeLevel, body.Status)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true})
+	})
+
+	app.Patch("/v1/schools/:id/students/:userId", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		student := c.Params("userId")
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct{ AdmissionNo, GradeLevel, Status *string }
+		_ = c.BodyParser(&body)
+		_, err = opts.DB.Exec(`INSERT INTO student_records (school_id, student_user_id, admission_no, grade_level, status) VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),COALESCE(NULLIF($5,''),'active'))
+			ON CONFLICT (school_id, student_user_id) DO UPDATE SET admission_no=COALESCE(NULLIF($3,''), student_records.admission_no), grade_level=COALESCE(NULLIF($4,''), student_records.grade_level), status=COALESCE(NULLIF($5,''), student_records.status), updated_at=now()`,
+			sid, student, coalesceString(body.AdmissionNo), coalesceString(body.GradeLevel), coalesceString(body.Status))
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- SMS: Academic years and terms ---
+	app.Get("/v1/schools/:id/years", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var rows []struct {
+			ID, Name, Status   string
+			StartDate, EndDate *time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, name, status, start_date, end_date FROM academic_years WHERE school_id=$1 ORDER BY start_date NULLS LAST, created_at DESC`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/schools/:id/years", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name               string
+			StartDate, EndDate *string
+			Status             string
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO academic_years (school_id, name, start_date, end_date, status) VALUES ($1,$2, NULLIF($3,'')::date, NULLIF($4,'')::date, COALESCE(NULLIF($5,''),'planned'))`, sid, body.Name, coalesceString(body.StartDate), coalesceString(body.EndDate), body.Status)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true})
+	})
+	app.Patch("/v1/years/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		yid := c.Params("id")
+		// verify school admin by joining
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM academic_years WHERE id=$1`, yid); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct{ Name, Status, StartDate, EndDate *string }
+		_ = c.BodyParser(&body)
+		_, err = opts.DB.Exec(`UPDATE academic_years SET name=COALESCE(NULLIF($1,''), name), status=COALESCE(NULLIF($2,''), status), start_date=COALESCE(NULLIF($3,'')::date, start_date), end_date=COALESCE(NULLIF($4,'')::date, end_date) WHERE id=$5`, coalesceString(body.Name), coalesceString(body.Status), coalesceString(body.StartDate), coalesceString(body.EndDate), yid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Get("/v1/years/:id/terms", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		yid := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM academic_years WHERE id=$1`, yid); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var rows []struct {
+			ID, Name           string
+			StartDate, EndDate *time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, name, start_date, end_date FROM school_terms WHERE year_id=$1 ORDER BY start_date NULLS LAST, created_at DESC`, yid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/years/:id/terms", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		yid := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM academic_years WHERE id=$1`, yid); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name               string
+			StartDate, EndDate *string
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO school_terms (year_id, name, start_date, end_date) VALUES ($1,$2, NULLIF($3,'')::date, NULLIF($4,'')::date)`, yid, body.Name, coalesceString(body.StartDate), coalesceString(body.EndDate))
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true})
+	})
+	app.Patch("/v1/terms/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		tid := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT y.school_id FROM school_terms t JOIN academic_years y ON y.id=t.year_id WHERE t.id=$1`, tid); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct{ Name, StartDate, EndDate *string }
+		_ = c.BodyParser(&body)
+		_, err = opts.DB.Exec(`UPDATE school_terms SET name=COALESCE(NULLIF($1,''), name), start_date=COALESCE(NULLIF($2,'')::date, start_date), end_date=COALESCE(NULLIF($3,'')::date, end_date) WHERE id=$4`, coalesceString(body.Name), coalesceString(body.StartDate), coalesceString(body.EndDate), tid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- SMS: Sections ---
+	app.Get("/v1/schools/:id/sections", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		member, _ := auth.IsSchoolMember(opts.DB, sid, uid)
+		if !member {
+			return fiber.ErrForbidden
+		}
+		var rows []struct{ ID, Name, GradeLevel string }
+		if err := opts.DB.Select(&rows, `SELECT id, name, COALESCE(grade_level,'') AS grade_level FROM school_sections WHERE school_id=$1 ORDER BY name`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/schools/:id/sections", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct{ Name, GradeLevel string }
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		var out struct{ ID string }
+		if err := opts.DB.Get(&out, `INSERT INTO school_sections (school_id, name, grade_level) VALUES ($1,$2, NULLIF($3,'')) RETURNING id`, sid, body.Name, body.GradeLevel); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true, "data": out})
+	})
+	app.Get("/v1/sections/:id/members", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sec := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM school_sections WHERE id=$1`, sec); err != nil {
+			return fiber.ErrNotFound
+		}
+		member, _ := auth.IsSchoolMember(opts.DB, sid, uid)
+		if !member {
+			return fiber.ErrForbidden
+		}
+		var rows []struct{ StudentUserID string }
+		if err := opts.DB.Select(&rows, `SELECT student_user_id FROM section_members WHERE section_id=$1 ORDER BY student_user_id`, sec); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/sections/:id/members", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sec := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM school_sections WHERE id=$1`, sec); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct{ StudentUserID string }
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StudentUserID) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO section_members (section_id, student_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, sec, body.StudentUserID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true})
+	})
+	app.Delete("/v1/sections/:id/members", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sec := c.Params("id")
+		student := strings.TrimSpace(c.Query("student"))
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM school_sections WHERE id=$1`, sec); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		if student == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`DELETE FROM section_members WHERE section_id=$1 AND student_user_id=$2`, sec, student)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- SMS: Timetable ---
+	app.Get("/v1/schools/:id/timetable", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		member, _ := auth.IsSchoolMember(opts.DB, sid, uid)
+		if !member {
+			return fiber.ErrForbidden
+		}
+		q := `SELECT id, class_id, section_id, subject_id, day_of_week, start_time, end_time, COALESCE(room,'') AS room FROM timetable_entries WHERE school_id=$1`
+		params := []any{sid}
+		if v := strings.TrimSpace(c.Query("sectionId")); v != "" {
+			q += " AND section_id=$2"
+			params = append(params, v)
+		}
+		if v := strings.TrimSpace(c.Query("classId")); v != "" {
+			if len(params) == 1 {
+				q += " AND class_id=$2"
+			} else {
+				q += " AND class_id=$3"
+			}
+			params = append(params, v)
+		}
+		q += " ORDER BY day_of_week, start_time"
+		var rows []struct {
+			ID, ClassID, SectionID, SubjectID string
+			DayOfWeek                         int
+			StartTime, EndTime                string
+			Room                              string
+		}
+		if err := opts.DB.Select(&rows, q, params...); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/schools/:id/timetable", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			DayOfWeek                           int
+			Start, End                          string
+			SubjectID, ClassID, SectionID, Room string
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		if body.DayOfWeek < 0 || body.DayOfWeek > 6 {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO timetable_entries (school_id, class_id, section_id, subject_id, day_of_week, start_time, end_time, room, created_by_user_id) VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), $5, $6::time, $7::time, NULLIF($8,''), $9)`, sid, body.ClassID, body.SectionID, body.SubjectID, body.DayOfWeek, body.Start, body.End, body.Room, uid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true})
+	})
+	app.Delete("/v1/timetable/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		tid := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM timetable_entries WHERE id=$1`, tid); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			allowed, _ = auth.IsSchoolTutor(opts.DB, sid, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		_, err = opts.DB.Exec(`DELETE FROM timetable_entries WHERE id=$1`, tid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- SMS: Attendance ---
+	app.Post("/v1/classes/:id/attendance/mark", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		allowed, _ := auth.IsClassTutor(opts.DB, cid, uid)
+		if !allowed {
+			var sid *string
+			_ = opts.DB.Get(&sid, `SELECT school_id FROM classes WHERE id=$1`, cid)
+			if sid != nil && *sid != "" {
+				allowed, _ = auth.IsSchoolAdmin(opts.DB, *sid, uid)
+			}
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Day     string
+			Entries []struct{ StudentUserID, Status string }
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Day) == "" {
+			return fiber.ErrBadRequest
+		}
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT COALESCE(school_id::text,'') FROM classes WHERE id=$1`, cid)
+		for _, e := range body.Entries {
+			st := strings.ToLower(strings.TrimSpace(e.Status))
+			switch st {
+			case "present", "absent", "late", "excused":
+			default:
+				st = "present"
+			}
+			_, _ = opts.DB.Exec(`INSERT INTO attendance_records (school_id, class_id, day, student_user_id, status, recorded_by_user_id) VALUES ($1,$2,$3::date,$4,$5,$6)
+				ON CONFLICT (day, student_user_id, class_id) WHERE class_id IS NOT NULL DO UPDATE SET status=EXCLUDED.status`, sid, cid, body.Day, e.StudentUserID, st, uid)
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Get("/v1/classes/:id/attendance", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		// member check
+		if !isClassMember(cid, uid) {
+			return fiber.ErrForbidden
+		}
+		day := strings.TrimSpace(c.Query("day"))
+		var rows []struct {
+			StudentUserID, Status string
+			Day                   time.Time
+		}
+		if day != "" {
+			if err := opts.DB.Select(&rows, `SELECT student_user_id, status, day FROM attendance_records WHERE class_id=$1 AND day=$2::date ORDER BY student_user_id`, cid, day); err != nil {
+				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
+		} else {
+			if err := opts.DB.Select(&rows, `SELECT student_user_id, status, day FROM attendance_records WHERE class_id=$1 ORDER BY day DESC, student_user_id LIMIT 500`, cid); err != nil {
+				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
 	// Create an invite for a school (admin only)
 	app.Post("/v1/schools/:id/invites", func(c *fiber.Ctx) error {
 		if opts.DB == nil {
@@ -5118,23 +5755,244 @@ func New(opts Options) *fiber.App {
 
 	// --- AI Proxy ---
 	app.Post("/v1/ai/chat", func(c *fiber.Ctx) error {
-		if opts.DB == nil { return fiber.ErrInternalServerError }
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
 		// verify auth
-		if _, err := getUserID(c); err != nil { return fiber.ErrUnauthorized }
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		// parse a preview to support basic safety and logging
+		var body struct {
+			Model    string          `json:"model"`
+			Context  string          `json:"context"`
+			Lang     string          `json:"lang"`
+			Messages json.RawMessage `json:"messages"`
+		}
+		_ = c.BodyParser(&body)
+		// enforce AI user settings (opt-out / parental controls)
+		var enabled bool = true
+		_ = opts.DB.Get(&enabled, `SELECT ai_enabled FROM ai_settings WHERE user_id=$1`, uid)
+		if !enabled {
+			return c.Status(403).JSON(fiber.Map{"success": false, "message": "AI access is disabled for this account."})
+		}
+		preview := ""
+		if len(body.Messages) > 0 {
+			var msgs []map[string]any
+			_ = json.Unmarshal(body.Messages, &msgs)
+			for i := len(msgs) - 1; i >= 0; i-- { // last user message
+				if r, ok := msgs[i]["role"].(string); ok && r == "user" {
+					if t, ok := msgs[i]["content"].(string); ok {
+						preview = t
+						break
+					}
+				}
+			}
+		}
+		// very light content/academic integrity guard
+		bad := []string{"write my assignment", "complete my assignment", "exam answers", "cheat for me"}
+		for _, b := range bad {
+			if strings.Contains(strings.ToLower(preview), b) {
+				// log attempt and block
+				_, _ = opts.DB.Exec(`INSERT INTO ai_usage_logs (user_id, model, context, prompt_preview) VALUES ($1,$2,$3,$4)`, uid, body.Model, body.Context, preview)
+				return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request blocked by academic integrity safeguards."})
+			}
+		}
+		// record usage
+		_, _ = opts.DB.Exec(`INSERT INTO ai_usage_logs (user_id, model, context, prompt_preview) VALUES ($1,$2,$3,$4)`, uid, body.Model, body.Context, preview)
 		api := strings.TrimSpace(os.Getenv("AI_API_URL"))
-		if api == "" { return c.Status(503).JSON(fiber.Map{"success": false, "message": "AI API not configured"}) }
+		if api == "" {
+			return c.Status(503).JSON(fiber.Map{"success": false, "message": "AI API not configured"})
+		}
 		req, _ := http.NewRequest("POST", strings.TrimRight(api, "/")+"/v1/chat", bytes.NewReader(c.Body()))
-		if v := c.Get("Authorization"); v != "" { req.Header.Set("Authorization", v) }
-		if v := c.Get("Cookie"); v != "" { req.Header.Set("Cookie", v) }
+		if v := c.Get("Authorization"); v != "" {
+			req.Header.Set("Authorization", v)
+		}
+		if v := c.Get("Cookie"); v != "" {
+			req.Header.Set("Cookie", v)
+		}
+		if strings.TrimSpace(body.Lang) != "" {
+			req.Header.Set("Accept-Language", body.Lang)
+		}
 		req.Header.Set("Content-Type", "application/json")
 		cli := &http.Client{Timeout: 30 * time.Second}
 		resp, err := cli.Do(req)
-		if err != nil { return c.Status(502).JSON(fiber.Map{"success": false, "message": err.Error()}) }
+		if err != nil {
+			return c.Status(502).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		defer resp.Body.Close()
 		c.Set("Content-Type", resp.Header.Get("Content-Type"))
 		c.Status(resp.StatusCode)
 		_, _ = io.Copy(c, resp.Body)
 		return nil
+	})
+
+	// --- Feedback & Bug Reports ---
+	app.Post("/v1/feedback", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var body struct{ Category, Message, Context string }
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Message) == "" {
+			return fiber.ErrBadRequest
+		}
+		cat := strings.ToLower(strings.TrimSpace(body.Category))
+		switch cat {
+		case "ux", "feature", "content":
+		default:
+			cat = "other"
+		}
+		if _, err := opts.DB.Exec(`INSERT INTO user_feedback (user_id, category, message, context) VALUES ($1,$2,$3,$4)`, uid, cat, body.Message, nullIfEmptyStr(body.Context)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- Error tracking: client error intake ---
+	app.Post("/v1/errors", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, _ := getUserID(c) // optional
+		var b struct {
+			Severity string
+			Message  string
+			Url      string
+			Stack    string
+			Context  json.RawMessage
+		}
+		_ = c.BodyParser(&b)
+		sev := strings.ToLower(strings.TrimSpace(b.Severity))
+		switch sev {
+		case "debug", "info", "warn", "error", "fatal":
+		default:
+			sev = "error"
+		}
+		agent := c.Get("User-Agent")
+		_, err := opts.DB.Exec(`INSERT INTO error_events (user_id, severity, message, url, stack, context, user_agent) VALUES ($1,$2,$3,$4,$5,$6,$7)`, nullIfEmptyStr(uid), sev, nullIfEmptyStr(b.Message), nullIfEmptyStr(b.Url), nullIfEmptyStr(b.Stack), nullIfEmptyJSON(b.Context), nullIfEmptyStr(agent))
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	app.Get("/v1/feedback/mine", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var rows []struct {
+			ID, Category, Message, Context string
+			CreatedAt                      time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, category, message, COALESCE(context,'') AS context, created_at FROM user_feedback WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`, uid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	app.Post("/v1/bugs", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var body struct{ Severity, Title, Details, Url string }
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Title) == "" {
+			return fiber.ErrBadRequest
+		}
+		sev := strings.ToLower(strings.TrimSpace(body.Severity))
+		switch sev {
+		case "low", "medium", "high", "critical":
+		default:
+			sev = "low"
+		}
+		if _, err := opts.DB.Exec(`INSERT INTO bug_reports (user_id, severity, title, details, url) VALUES ($1,$2,$3,$4,$5)`, uid, sev, body.Title, nullIfEmptyStr(body.Details), nullIfEmptyStr(body.Url)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	app.Get("/v1/bugs/mine", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var rows []struct {
+			ID, Severity, Title, Details, Url string
+			CreatedAt                         time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, severity, title, COALESCE(details,'') AS details, COALESCE(url,'') AS url, created_at FROM bug_reports WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`, uid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// --- Parent–Teacher Group Meetings (school-level calls) ---
+	app.Post("/v1/schools/:id/meetings", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		// allow school admin or tutor
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		isTutor, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !isAdmin && !isTutor {
+			return fiber.ErrForbidden
+		}
+		var body struct{ Title string }
+		_ = c.BodyParser(&body)
+		if strings.TrimSpace(body.Title) == "" {
+			body.Title = "Parent–Teacher Meeting"
+		}
+		code := strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))[:12]
+		url := strings.TrimRight(providerBase(), "/") + "/" + code
+		if _, err := opts.DB.Exec(`INSERT INTO live_rooms (title, purpose, media, interaction, teacher_only, school_id, scheduled_at, room_code, provider_url) VALUES ($1,'study','video','interactive',false,$2, now(), $3, $4)`, body.Title, sid, code, url); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"roomCode": code, "url": url}})
+	})
+
+	app.Get("/v1/schools/:id/meetings", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		// verify membership (any role)
+		var member bool
+		_ = opts.DB.Get(&member, `SELECT EXISTS (SELECT 1 FROM school_members WHERE school_id=$1 AND user_id=$2 AND status='active')`, sid, uid)
+		if !member {
+			return fiber.ErrForbidden
+		}
+		var rows []struct {
+			ID, Title, RoomCode, ProviderURL string
+			ScheduledAt, EndedAt             *time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, title, room_code, provider_url, scheduled_at, ended_at FROM live_rooms WHERE school_id=$1 AND scheduled_at > now()- interval '7 days' ORDER BY scheduled_at DESC LIMIT 200`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
 	})
 
 	// Stripe webhook to finalize payments
@@ -5153,13 +6011,13 @@ func New(opts Options) *fiber.App {
 			return c.Status(400).SendString("invalid signature")
 		}
 		switch evt.Type {
-	case "checkout.session.completed":
-		var s stripe.CheckoutSession
-		_ = json.Unmarshal(evt.Data.Raw, &s)
-		payID := s.Metadata["payment_id"]
-		classID := s.Metadata["class_id"]
-		buyer := s.Metadata["buyer_user_id"]
-		couponCode := s.Metadata["coupon_code"]
+		case "checkout.session.completed":
+			var s stripe.CheckoutSession
+			_ = json.Unmarshal(evt.Data.Raw, &s)
+			payID := s.Metadata["payment_id"]
+			classID := s.Metadata["class_id"]
+			buyer := s.Metadata["buyer_user_id"]
+			couponCode := s.Metadata["coupon_code"]
 			if payID != "" {
 				_, _ = opts.DB.Exec(`UPDATE payments SET status='succeeded', gateway_ref=$1, updated_at=now() WHERE id=$2`, s.ID, payID)
 			}
@@ -5169,19 +6027,28 @@ func New(opts Options) *fiber.App {
 				if couponCode != "" {
 					var cid string
 					_ = opts.DB.Get(&cid, `SELECT id FROM coupons WHERE code=$1`, couponCode)
-					if cid != "" { _, _ = opts.DB.Exec(`INSERT INTO coupon_redemptions (coupon_id, user_id, class_id, order_id) VALUES ($1,$2,$3,(SELECT id FROM class_orders WHERE payment_id=$4 LIMIT 1))`, cid, buyer, classID, payID) }
+					if cid != "" {
+						_, _ = opts.DB.Exec(`INSERT INTO coupon_redemptions (coupon_id, user_id, class_id, order_id) VALUES ($1,$2,$3,(SELECT id FROM class_orders WHERE payment_id=$4 LIMIT 1))`, cid, buyer, classID, payID)
+					}
 				}
 				// ledger split
 				var pct int
 				_ = opts.DB.Get(&pct, `SELECT COALESCE((SELECT platform_percent FROM class_commissions WHERE class_id=$1), (SELECT platform_percent FROM commission_settings WHERE id=1))`, classID)
-				if pct < 0 { pct = 0 }
-				if pct > 100 { pct = 100 }
+				if pct < 0 {
+					pct = 0
+				}
+				if pct > 100 {
+					pct = 100
+				}
 				var amt int
 				_ = opts.DB.Get(&amt, `SELECT price_cents FROM classes WHERE id=$1`, classID)
 				platform := (amt * pct) / 100
 				tutor := amt - platform
 				// partner shares
-				type share struct{ Partner string `db:"partner_user_id"`; Percent int `db:"percent"` }
+				type share struct {
+					Partner string `db:"partner_user_id"`
+					Percent int    `db:"percent"`
+				}
 				prs := []share{}
 				_ = opts.DB.Select(&prs, `SELECT partner_user_id, percent FROM class_revenue_shares WHERE class_id=$1`, classID)
 				for _, pr := range prs { // take from tutor share proportionally
@@ -5209,7 +6076,9 @@ func New(opts Options) *fiber.App {
 
 	// Flutterwave webhook
 	app.Post("/v1/payments/flutterwave/webhook", func(c *fiber.Ctx) error {
-		if opts.DB == nil { return fiber.ErrInternalServerError }
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
 		secret := strings.TrimSpace(os.Getenv("FLW_WEBHOOK_SECRET"))
 		if secret != "" {
 			hash := c.Get("verif-hash")
@@ -5217,43 +6086,53 @@ func New(opts Options) *fiber.App {
 				return fiber.ErrForbidden
 			}
 		}
-		var evt struct{ Data struct{
-			TxRef string `json:"tx_ref"`
-			Status string `json:"status"`
-			Id int64 `json:"id"`
-			Currency string `json:"currency"`
-		} `json:"data"` }
-		if err := json.Unmarshal(c.Body(), &evt); err != nil { return fiber.ErrBadRequest }
-	if strings.EqualFold(evt.Data.Status, "successful") && evt.Data.TxRef != "" {
-		payID := evt.Data.TxRef
-		_, _ = opts.DB.Exec(`UPDATE payments SET status='succeeded', gateway_ref=$1, updated_at=now() WHERE id=$2`, fmt.Sprintf("%d", evt.Data.Id), payID)
-		// map order by payment id
-		var classID, buyer string
-		_ = opts.DB.Get(&classID, `SELECT class_id FROM class_orders WHERE payment_id=$1`, payID)
-		_ = opts.DB.Get(&buyer, `SELECT buyer_user_id FROM class_orders WHERE payment_id=$1`, payID)
-		if classID != "" && buyer != "" {
-			_, _ = opts.DB.Exec(`UPDATE class_orders SET status='paid', updated_at=now() WHERE payment_id=$1`, payID)
-			_, _ = opts.DB.Exec(`INSERT INTO class_enrollments (class_id, student_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, classID, buyer)
-			// coupon redemption if present in payments.metadata
-			var meta map[string]any
-			_ = opts.DB.Get(&meta, `SELECT metadata FROM payments WHERE id=$1`, payID)
-			if meta != nil {
-				if code, ok := meta["coupon_code"].(string); ok && strings.TrimSpace(code) != "" {
-					var cid string
-					_ = opts.DB.Get(&cid, `SELECT id FROM coupons WHERE code=$1`, code)
-					if cid != "" { _, _ = opts.DB.Exec(`INSERT INTO coupon_redemptions (coupon_id, user_id, class_id, order_id) VALUES ($1,$2,$3,(SELECT id FROM class_orders WHERE payment_id=$4 LIMIT 1))`, cid, buyer, classID, payID) }
+		var evt struct {
+			Data struct {
+				TxRef    string `json:"tx_ref"`
+				Status   string `json:"status"`
+				Id       int64  `json:"id"`
+				Currency string `json:"currency"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(c.Body(), &evt); err != nil {
+			return fiber.ErrBadRequest
+		}
+		if strings.EqualFold(evt.Data.Status, "successful") && evt.Data.TxRef != "" {
+			payID := evt.Data.TxRef
+			_, _ = opts.DB.Exec(`UPDATE payments SET status='succeeded', gateway_ref=$1, updated_at=now() WHERE id=$2`, fmt.Sprintf("%d", evt.Data.Id), payID)
+			// map order by payment id
+			var classID, buyer string
+			_ = opts.DB.Get(&classID, `SELECT class_id FROM class_orders WHERE payment_id=$1`, payID)
+			_ = opts.DB.Get(&buyer, `SELECT buyer_user_id FROM class_orders WHERE payment_id=$1`, payID)
+			if classID != "" && buyer != "" {
+				_, _ = opts.DB.Exec(`UPDATE class_orders SET status='paid', updated_at=now() WHERE payment_id=$1`, payID)
+				_, _ = opts.DB.Exec(`INSERT INTO class_enrollments (class_id, student_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, classID, buyer)
+				// coupon redemption if present in payments.metadata
+				var meta map[string]any
+				_ = opts.DB.Get(&meta, `SELECT metadata FROM payments WHERE id=$1`, payID)
+				if meta != nil {
+					if code, ok := meta["coupon_code"].(string); ok && strings.TrimSpace(code) != "" {
+						var cid string
+						_ = opts.DB.Get(&cid, `SELECT id FROM coupons WHERE code=$1`, code)
+						if cid != "" {
+							_, _ = opts.DB.Exec(`INSERT INTO coupon_redemptions (coupon_id, user_id, class_id, order_id) VALUES ($1,$2,$3,(SELECT id FROM class_orders WHERE payment_id=$4 LIMIT 1))`, cid, buyer, classID, payID)
+						}
+					}
 				}
 			}
 		}
-	}
 		return c.JSON(fiber.Map{"success": true})
 	})
 
 	// M-Pesa callback (STK push)
 	app.Post("/v1/payments/mpesa/callback", func(c *fiber.Ctx) error {
-		if opts.DB == nil { return fiber.ErrInternalServerError }
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
 		var payload map[string]any
-		if err := json.Unmarshal(c.Body(), &payload); err != nil { return fiber.ErrBadRequest }
+		if err := json.Unmarshal(c.Body(), &payload); err != nil {
+			return fiber.ErrBadRequest
+		}
 		data, _ := payload["Body"].(map[string]any)
 		stk, _ := data["stkCallback"].(map[string]any)
 		code, _ := stk["ResultCode"].(float64)
@@ -5264,8 +6143,12 @@ func New(opts Options) *fiber.App {
 		for _, it := range items {
 			kv, _ := it.(map[string]any)
 			name, _ := kv["Name"].(string)
-			if strings.EqualFold(name, "AccountReference") { payID, _ = kv["Value"].(string) }
-			if strings.EqualFold(name, "MpesaReceiptNumber") { receipt, _ = kv["Value"].(string) }
+			if strings.EqualFold(name, "AccountReference") {
+				payID, _ = kv["Value"].(string)
+			}
+			if strings.EqualFold(name, "MpesaReceiptNumber") {
+				receipt, _ = kv["Value"].(string)
+			}
 		}
 		if code == 0 && payID != "" {
 			_, _ = opts.DB.Exec(`UPDATE payments SET status='succeeded', gateway_ref=$1, updated_at=now() WHERE id=$2`, receipt, payID)
@@ -5343,59 +6226,272 @@ func New(opts Options) *fiber.App {
 		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"uptimeSeconds": uptime, "studentsEnrolled": users}})
 	})
 
+	// Engagement metrics (simple)
+	app.Get("/v1/analytics/engagement", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		_ = uid // any authed user
+		var dau int
+		_ = opts.DB.Get(&dau, `SELECT COUNT(DISTINCT user_id) FROM (
+			SELECT student_user_id AS user_id FROM class_enrollments WHERE created_at > now()- interval '1 day'
+			UNION SELECT sender_user_id FROM direct_messages WHERE created_at > now()- interval '1 day'
+			UNION SELECT user_id FROM error_events WHERE created_at > now()- interval '1 day'
+		) q`)
+		var posts int
+		_ = opts.DB.Get(&posts, `SELECT COUNT(*) FROM class_posts WHERE created_at > now()- interval '1 day'`)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"dailyActiveUsers": dau, "posts": posts}})
+	})
+
+	// Completion metrics (simple class-level aggregation)
+	app.Get("/v1/analytics/completion", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		_ = uid
+		var avg float64
+		_ = opts.DB.Get(&avg, `WITH totals AS (
+			SELECT e.class_id, COUNT(DISTINCT l.id) AS lessons
+			FROM class_enrollments e JOIN subjects s ON s.class_id=e.class_id JOIN lessons l ON l.subject_id=s.id
+			GROUP BY e.class_id
+		), done AS (
+			SELECT e.class_id, COUNT(*) FILTER (WHERE p.status='completed') AS completed
+			FROM class_enrollments e JOIN lesson_progress p ON p.student_user_id=e.student_user_id
+			GROUP BY e.class_id
+		)
+		SELECT COALESCE(AVG(CASE WHEN t.lessons>0 THEN (d.completed::numeric / t.lessons::numeric)*100 ELSE NULL END),0) FROM totals t JOIN done d ON d.class_id=t.class_id`)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"avgLessonCompletionPercent": avg}})
+	})
+
 	// Orders and receipts
 	app.Get("/v1/orders", func(c *fiber.Ctx) error {
-		if opts.DB == nil { return fiber.ErrInternalServerError }
-		uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
-		var rows []struct{
-			ID string `db:"id"`;
-			Status string `db:"status"`;
-			ClassID string `db:"class_id"`;
-			Title string `db:"title"`;
-			Price int `db:"price_cents"`;
-			Currency string `db:"currency"`;
-			CreatedAt time.Time `db:"created_at"`;
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var rows []struct {
+			ID        string    `db:"id"`
+			Status    string    `db:"status"`
+			ClassID   string    `db:"class_id"`
+			Title     string    `db:"title"`
+			Price     int       `db:"price_cents"`
+			Currency  string    `db:"currency"`
+			CreatedAt time.Time `db:"created_at"`
 		}
 		_ = opts.DB.Select(&rows, `SELECT o.id, o.status, o.class_id, c.title, o.price_cents, o.currency, o.created_at FROM class_orders o JOIN classes c ON c.id=o.class_id WHERE o.buyer_user_id=$1 ORDER BY o.created_at DESC`, uid)
 		return c.JSON(fiber.Map{"success": true, "data": rows})
 	})
 
+	// --- Class versions ---
+	app.Get("/v1/classes/:id/versions", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		_ = uid
+		cid := c.Params("id")
+		var rows []struct {
+			ID                 string
+			Version            int
+			Title, Description string
+			CreatedAt          time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, version, COALESCE(title,''), COALESCE(description,''), created_at FROM class_versions WHERE class_id=$1 ORDER BY version DESC`, cid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/classes/:id/versions", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		// only tutor can version
+		ok, _ := auth.IsClassTutor(opts.DB, cid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var v int
+		_ = opts.DB.Get(&v, `SELECT COALESCE(MAX(version),0)+1 FROM class_versions WHERE class_id=$1`, cid)
+		var title, desc string
+		_ = opts.DB.Get(&title, `SELECT COALESCE(title,'') FROM classes WHERE id=$1`, cid)
+		_ = opts.DB.Get(&desc, `SELECT COALESCE(description,'') FROM classes WHERE id=$1`, cid)
+		var out struct{ ID string }
+		if err := opts.DB.Get(&out, `INSERT INTO class_versions (class_id, version, title, description, created_by_user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`, cid, v, title, desc, uid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.Status(201).JSON(fiber.Map{"success": true, "data": out})
+	})
+
+	// --- Peer reviews ---
+	app.Get("/v1/classes/:id/peer-reviews", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		if !isClassMember(cid, uid) {
+			return fiber.ErrForbidden
+		}
+		var rows []struct {
+			ReviewerUserID string
+			Rating         *int
+			Comment        string
+			CreatedAt      time.Time
+		}
+		if err := opts.DB.Select(&rows, `SELECT reviewer_user_id, rating, COALESCE(comment,'') AS comment, created_at FROM peer_reviews WHERE class_id=$1 ORDER BY created_at DESC`, cid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		var avg *float64
+		_ = opts.DB.Get(&avg, `SELECT AVG(rating)::float FROM peer_reviews WHERE class_id=$1`, cid)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"reviews": rows, "average": avg}})
+	})
+	app.Post("/v1/classes/:id/peer-reviews", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		if !isClassMember(cid, uid) {
+			return fiber.ErrForbidden
+		}
+		var b struct {
+			Rating  int
+			Comment string
+		}
+		if err := c.BodyParser(&b); err != nil || b.Rating < 1 || b.Rating > 5 {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO peer_reviews (class_id, reviewer_user_id, rating, comment) VALUES ($1,$2,$3, NULLIF($4,'')) ON CONFLICT (class_id, reviewer_user_id) DO UPDATE SET rating=EXCLUDED.rating, comment=EXCLUDED.comment, created_at=now()`, cid, uid, b.Rating, b.Comment)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- Experiments bucketing ---
+	app.Post("/v1/experiments/assign", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var b struct{ Key string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Key) == "" {
+			return fiber.ErrBadRequest
+		}
+		var existing string
+		_ = opts.DB.Get(&existing, `SELECT variant FROM experiment_assignments WHERE exp_key=$1 AND user_id=$2`, b.Key, uid)
+		if existing != "" {
+			return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"variant": existing}})
+		}
+		var variants []string
+		{
+			var raw json.RawMessage
+			if err := opts.DB.Get(&raw, `SELECT variants FROM experiments WHERE key=$1`, b.Key); err != nil {
+				return fiber.ErrNotFound
+			}
+			_ = json.Unmarshal(raw, &variants)
+		}
+		if len(variants) == 0 {
+			variants = []string{"A", "B"}
+		}
+		idx := int(math.Abs(float64(hash(uid+b.Key)))) % len(variants)
+		var chosen = variants[idx]
+		_, _ = opts.DB.Exec(`INSERT INTO experiment_assignments (exp_key, user_id, variant) VALUES ($1,$2,$3) ON CONFLICT (exp_key, user_id) DO NOTHING`, b.Key, uid, chosen)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"variant": chosen}})
+	})
+
 	app.Get("/v1/orders/:id", func(c *fiber.Ctx) error {
-		if opts.DB == nil { return fiber.ErrInternalServerError }
-		uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
 		id := c.Params("id")
-		var row struct{ ID, Status, ClassID, Title, Currency string; Price int; CreatedAt time.Time }
-		if err := opts.DB.Get(&row, `SELECT o.id, o.status, o.class_id, c.title, o.price_cents AS price, o.currency, o.created_at FROM class_orders o JOIN classes c ON c.id=o.class_id WHERE o.id=$1 AND o.buyer_user_id=$2`, id, uid); err != nil { return fiber.ErrNotFound }
+		var row struct {
+			ID, Status, ClassID, Title, Currency string
+			Price                                int
+			CreatedAt                            time.Time
+		}
+		if err := opts.DB.Get(&row, `SELECT o.id, o.status, o.class_id, c.title, o.price_cents AS price, o.currency, o.created_at FROM class_orders o JOIN classes c ON c.id=o.class_id WHERE o.id=$1 AND o.buyer_user_id=$2`, id, uid); err != nil {
+			return fiber.ErrNotFound
+		}
 		return c.JSON(fiber.Map{"success": true, "data": row})
 	})
 
 	// Refund (admin only) - Stripe and Flutterwave supported
 	app.Post("/v1/orders/:id/refund", func(c *fiber.Ctx) error {
-		if opts.DB == nil { return fiber.ErrInternalServerError }
-		uid, err := getUserID(c); if err != nil { return fiber.ErrUnauthorized }
-		if !isPlatformAdmin(uid) { return fiber.ErrForbidden }
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		if !isPlatformAdmin(uid) {
+			return fiber.ErrForbidden
+		}
 		id := c.Params("id")
 		var payID, gateway, ref string
 		_ = opts.DB.Get(&payID, `SELECT payment_id FROM class_orders WHERE id=$1`, id)
 		_ = opts.DB.Get(&gateway, `SELECT gateway FROM payments WHERE id=$1`, payID)
 		_ = opts.DB.Get(&ref, `SELECT gateway_ref FROM payments WHERE id=$1`, payID)
-		if payID == "" || gateway == "" { return fiber.ErrBadRequest }
+		if payID == "" || gateway == "" {
+			return fiber.ErrBadRequest
+		}
 		switch strings.ToLower(gateway) {
 		case "stripe":
 			sec := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
-			if sec == "" { return fiber.ErrBadRequest }
+			if sec == "" {
+				return fiber.ErrBadRequest
+			}
 			stripe.Key = sec
 			_, err = stripeRefund(ref)
-			if err != nil { return c.Status(502).JSON(fiber.Map{"success": false, "message": err.Error()}) }
+			if err != nil {
+				return c.Status(502).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
 		case "flutterwave":
 			flw := strings.TrimSpace(os.Getenv("FLW_SECRET_KEY"))
-			if flw == "" { return fiber.ErrBadRequest }
+			if flw == "" {
+				return fiber.ErrBadRequest
+			}
 			req, _ := http.NewRequest("POST", "https://api.flutterwave.com/v3/transactions/"+ref+"/refund", bytes.NewReader([]byte(`{}`)))
 			req.Header.Set("Authorization", "Bearer "+flw)
 			req.Header.Set("Content-Type", "application/json")
 			cli := &http.Client{Timeout: 10 * time.Second}
 			resp, err2 := cli.Do(req)
-			if err2 != nil || resp.StatusCode >= 300 { return c.Status(502).JSON(fiber.Map{"success": false, "message": "gateway error"}) }
+			if err2 != nil || resp.StatusCode >= 300 {
+				return c.Status(502).JSON(fiber.Map{"success": false, "message": "gateway error"})
+			}
 			_ = resp.Body.Close()
 		default:
 			return fiber.ErrBadRequest
@@ -5425,47 +6521,62 @@ func New(opts Options) *fiber.App {
 		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.ClassID) == "" {
 			return fiber.ErrBadRequest
 		}
-    var classTitle string
-    var price int
-    _ = opts.DB.Get(&classTitle, `SELECT title FROM classes WHERE id=$1`, body.ClassID)
-    if err := opts.DB.Get(&price, `SELECT price_cents FROM classes WHERE id=$1 AND is_paid=true`, body.ClassID); err != nil || price <= 0 {
-        return fiber.ErrBadRequest
-    }
-    // Apply coupon if provided and valid
-    couponCode := strings.TrimSpace(c.Query("coupon"))
-    if couponCode == "" && strings.TrimSpace(body.Mode) != "" { /* noop to use body for reading */ }
-    if couponCode == "" {
-        var tmp struct{ Coupon string `json:"coupon"` }
-        _ = c.BodyParser(&tmp)
-        couponCode = strings.TrimSpace(tmp.Coupon)
-    }
-    finalPrice := price
-    var couponID *string
-    if couponCode != "" {
-        type cp struct { ID string `db:"id"`; Percent *int `db:"percent_off"`; Amount *int `db:"amount_off_cents"`; Currency *string `db:"currency"`; Max *int `db:"max_redemptions"`; Expires *time.Time `db:"expires_at"`; Active bool `db:"active"` }
-        var cpr cp
-        err := opts.DB.Get(&cpr, `SELECT id, percent_off, amount_off_cents, currency, max_redemptions, expires_at, active FROM coupons WHERE code=$1`, couponCode)
-        if err == nil && cpr.Active {
-            if cpr.Expires == nil || cpr.Expires.After(time.Now()) {
-                // enforce max redemptions
-                var used int
-                _ = opts.DB.Get(&used, `SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id=$1`, cpr.ID)
-                if cpr.Max == nil || used < *cpr.Max {
-                    discount := 0
-                    if cpr.Percent != nil {
-                        discount = (price * (*cpr.Percent)) / 100
-                    } else if cpr.Amount != nil {
-                        if cpr.Currency == nil || strings.EqualFold(*cpr.Currency, "USD") { // simple guard; multi-currency later
-                            discount = *cpr.Amount
-                        }
-                    }
-                    if discount > 0 { finalPrice = price - discount }
-                    if finalPrice < 0 { finalPrice = 0 }
-                    couponID = &cpr.ID
-                }
-            }
-        }
-    }
+		var classTitle string
+		var price int
+		_ = opts.DB.Get(&classTitle, `SELECT title FROM classes WHERE id=$1`, body.ClassID)
+		if err := opts.DB.Get(&price, `SELECT price_cents FROM classes WHERE id=$1 AND is_paid=true`, body.ClassID); err != nil || price <= 0 {
+			return fiber.ErrBadRequest
+		}
+		// Apply coupon if provided and valid
+		couponCode := strings.TrimSpace(c.Query("coupon"))
+		if couponCode == "" && strings.TrimSpace(body.Mode) != "" { /* noop to use body for reading */
+		}
+		if couponCode == "" {
+			var tmp struct {
+				Coupon string `json:"coupon"`
+			}
+			_ = c.BodyParser(&tmp)
+			couponCode = strings.TrimSpace(tmp.Coupon)
+		}
+		finalPrice := price
+		var couponID *string
+		if couponCode != "" {
+			type cp struct {
+				ID       string     `db:"id"`
+				Percent  *int       `db:"percent_off"`
+				Amount   *int       `db:"amount_off_cents"`
+				Currency *string    `db:"currency"`
+				Max      *int       `db:"max_redemptions"`
+				Expires  *time.Time `db:"expires_at"`
+				Active   bool       `db:"active"`
+			}
+			var cpr cp
+			err := opts.DB.Get(&cpr, `SELECT id, percent_off, amount_off_cents, currency, max_redemptions, expires_at, active FROM coupons WHERE code=$1`, couponCode)
+			if err == nil && cpr.Active {
+				if cpr.Expires == nil || cpr.Expires.After(time.Now()) {
+					// enforce max redemptions
+					var used int
+					_ = opts.DB.Get(&used, `SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id=$1`, cpr.ID)
+					if cpr.Max == nil || used < *cpr.Max {
+						discount := 0
+						if cpr.Percent != nil {
+							discount = (price * (*cpr.Percent)) / 100
+						} else if cpr.Amount != nil {
+							if cpr.Currency == nil || strings.EqualFold(*cpr.Currency, "USD") { // simple guard; multi-currency later
+								discount = *cpr.Amount
+							}
+						}
+						if discount > 0 {
+							finalPrice = price - discount
+						}
+						if finalPrice < 0 {
+							finalPrice = 0
+						}
+						couponID = &cpr.ID
+					}
+				}
+			}
+		}
 		gateway := body.Gateway
 		if gateway == "" {
 			gateway = "stripe"
@@ -5475,38 +6586,38 @@ func New(opts Options) *fiber.App {
 			currency = "USD"
 		}
 		var payID string
-    // include coupon metadata if present
-    var meta any = map[string]any{}
-    if couponID != nil || couponCode != "" {
-        meta = map[string]any{"coupon_id": couponID, "coupon_code": couponCode}
-    }
-    mb, _ := json.Marshal(meta)
-    if err := opts.DB.Get(&payID, `INSERT INTO payments (user_id, amount_cents, currency, gateway, status, metadata) VALUES ($1,$2,$3,$4,'pending',COALESCE($5,'{}'::jsonb)) RETURNING id`, uid, finalPrice, currency, gateway, nullIfEmptyJSON(mb)); err != nil {
-        return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
-    }
-    _, _ = opts.DB.Exec(`INSERT INTO class_orders (payment_id, class_id, buyer_user_id, price_cents, currency, status) VALUES ($1,$2,$3,$4,$5,'pending') ON CONFLICT (class_id, buyer_user_id) DO NOTHING`, payID, body.ClassID, uid, finalPrice, currency)
-    logAudit(uid, "payment_checkout_init", "payment", payID, fiber.Map{"classId": body.ClassID, "amount": finalPrice, "currency": currency, "gateway": gateway, "coupon": couponCode})
+		// include coupon metadata if present
+		var meta any = map[string]any{}
+		if couponID != nil || couponCode != "" {
+			meta = map[string]any{"coupon_id": couponID, "coupon_code": couponCode}
+		}
+		mb, _ := json.Marshal(meta)
+		if err := opts.DB.Get(&payID, `INSERT INTO payments (user_id, amount_cents, currency, gateway, status, metadata) VALUES ($1,$2,$3,$4,'pending',COALESCE($5,'{}'::jsonb)) RETURNING id`, uid, finalPrice, currency, gateway, nullIfEmptyJSON(mb)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		_, _ = opts.DB.Exec(`INSERT INTO class_orders (payment_id, class_id, buyer_user_id, price_cents, currency, status) VALUES ($1,$2,$3,$4,$5,'pending') ON CONFLICT (class_id, buyer_user_id) DO NOTHING`, payID, body.ClassID, uid, finalPrice, currency)
+		logAudit(uid, "payment_checkout_init", "payment", payID, fiber.Map{"classId": body.ClassID, "amount": finalPrice, "currency": currency, "gateway": gateway, "coupon": couponCode})
 		secret := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
 		if gateway == "stripe" && secret != "" {
 			stripe.Key = secret
-            params := &stripe.CheckoutSessionParams{
-                Mode:      stripe.String(string(stripe.CheckoutSessionModePayment)),
-                SuccessURL: stripe.String(strings.TrimSpace(body.SuccessURL)),
-                CancelURL:  stripe.String(strings.TrimSpace(body.CancelURL)),
-                Metadata:   map[string]string{"payment_id": payID, "class_id": body.ClassID, "buyer_user_id": uid, "coupon_code": couponCode},
-                LineItems: []*stripe.CheckoutSessionLineItemParams{
-                    {
-                        PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
-                            Currency: stripe.String(strings.ToLower(currency)),
-                            ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-                                Name: stripe.String(classTitle),
-                            },
-                            UnitAmount: stripe.Int64(int64(finalPrice)),
-                        },
-                        Quantity: stripe.Int64(1),
-                    },
-                },
-            }
+			params := &stripe.CheckoutSessionParams{
+				Mode:       stripe.String(string(stripe.CheckoutSessionModePayment)),
+				SuccessURL: stripe.String(strings.TrimSpace(body.SuccessURL)),
+				CancelURL:  stripe.String(strings.TrimSpace(body.CancelURL)),
+				Metadata:   map[string]string{"payment_id": payID, "class_id": body.ClassID, "buyer_user_id": uid, "coupon_code": couponCode},
+				LineItems: []*stripe.CheckoutSessionLineItemParams{
+					{
+						PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
+							Currency: stripe.String(strings.ToLower(currency)),
+							ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
+								Name: stripe.String(classTitle),
+							},
+							UnitAmount: stripe.Int64(int64(finalPrice)),
+						},
+						Quantity: stripe.Int64(1),
+					},
+				},
+			}
 			s, err := session.New(params)
 			if err == nil && s != nil && s.URL != "" {
 				return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"paymentId": payID, "gateway": gateway, "url": s.URL}})
@@ -5516,15 +6627,14 @@ func New(opts Options) *fiber.App {
 		if gateway == "flutterwave" {
 			flw := strings.TrimSpace(os.Getenv("FLW_SECRET_KEY"))
 			if flw != "" {
-            bodyMap := map[string]any{
-                "tx_ref": payID,
-                "amount": fmt.Sprintf("%.2f", float64(finalPrice)/100.0),
-                "currency": currency,
-                "redirect_url": strings.TrimSpace(body.SuccessURL),
-                "customer": map[string]any{"name": uid},
-                "meta": map[string]any{"class_id": body.ClassID, "payment_id": payID, "buyer_user_id": uid, "coupon_code": couponCode},
-
-            }
+				bodyMap := map[string]any{
+					"tx_ref":       payID,
+					"amount":       fmt.Sprintf("%.2f", float64(finalPrice)/100.0),
+					"currency":     currency,
+					"redirect_url": strings.TrimSpace(body.SuccessURL),
+					"customer":     map[string]any{"name": uid},
+					"meta":         map[string]any{"class_id": body.ClassID, "payment_id": payID, "buyer_user_id": uid, "coupon_code": couponCode},
+				}
 				pb, _ := json.Marshal(bodyMap)
 				req, _ := http.NewRequest("POST", "https://api.flutterwave.com/v3/payments", bytes.NewReader(pb))
 				req.Header.Set("Authorization", "Bearer "+flw)
@@ -5546,11 +6656,17 @@ func New(opts Options) *fiber.App {
 		// M-Pesa STK Push (requires phone in request body)
 		if gateway == "mpesa" {
 			var phone string
-			if v := c.Query("phone"); v != "" { phone = v }
-			type phoneBody struct{ Phone string `json:"phone"` }
+			if v := c.Query("phone"); v != "" {
+				phone = v
+			}
+			type phoneBody struct {
+				Phone string `json:"phone"`
+			}
 			var p phoneBody
 			_ = c.BodyParser(&p)
-			if strings.TrimSpace(p.Phone) != "" { phone = strings.TrimSpace(p.Phone) }
+			if strings.TrimSpace(p.Phone) != "" {
+				phone = strings.TrimSpace(p.Phone)
+			}
 			if phone == "" {
 				return c.Status(400).JSON(fiber.Map{"success": false, "message": "Phone number required for M-Pesa"})
 			}
@@ -5560,7 +6676,9 @@ func New(opts Options) *fiber.App {
 			pk := strings.TrimSpace(os.Getenv("MPESA_PASSKEY"))
 			cb := strings.TrimSpace(os.Getenv("MPESA_CALLBACK_URL"))
 			base := strings.TrimSpace(os.Getenv("MPESA_BASE_URL"))
-			if base == "" { base = "https://sandbox.safaricom.co.ke" }
+			if base == "" {
+				base = "https://sandbox.safaricom.co.ke"
+			}
 			if ck != "" && cs != "" && sc != "" && pk != "" && cb != "" {
 				// fetch token
 				req, _ := http.NewRequest("GET", base+"/oauth/v1/generate?grant_type=client_credentials", nil)
@@ -5568,23 +6686,26 @@ func New(opts Options) *fiber.App {
 				cli := &http.Client{Timeout: 10 * time.Second}
 				resp, err := cli.Do(req)
 				if err == nil && resp != nil {
-					var tk struct{ AccessToken string `json:"access_token"` }
-					_ = json.NewDecoder(resp.Body).Decode(&tk); _ = resp.Body.Close()
+					var tk struct {
+						AccessToken string `json:"access_token"`
+					}
+					_ = json.NewDecoder(resp.Body).Decode(&tk)
+					_ = resp.Body.Close()
 					if strings.TrimSpace(tk.AccessToken) != "" {
 						ts := time.Now().Format("20060102150405")
 						pw := base64.StdEncoding.EncodeToString([]byte(sc + pk + ts))
-            stk := map[string]any{
-                "BusinessShortCode": sc,
-                "Password": pw,
-                "Timestamp": ts,
-                "TransactionType": "CustomerPayBillOnline",
-                "Amount": finalPrice / 100,
-                "PartyA": phone,
-                "PartyB": sc,
-                "PhoneNumber": phone,
-                "CallBackURL": cb,
-                "AccountReference": payID,
-							"TransactionDesc": classTitle,
+						stk := map[string]any{
+							"BusinessShortCode": sc,
+							"Password":          pw,
+							"Timestamp":         ts,
+							"TransactionType":   "CustomerPayBillOnline",
+							"Amount":            finalPrice / 100,
+							"PartyA":            phone,
+							"PartyB":            sc,
+							"PhoneNumber":       phone,
+							"CallBackURL":       cb,
+							"AccountReference":  payID,
+							"TransactionDesc":   classTitle,
 						}
 						pb, _ := json.Marshal(stk)
 						req2, _ := http.NewRequest("POST", base+"/mpesa/stkpush/v1/processrequest", bytes.NewReader(pb))
@@ -5968,6 +7089,83 @@ func New(opts Options) *fiber.App {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return c.JSON(fiber.Map{"success": true, "data": map[string]string{"url": url, "roomCode": code}})
+	})
+
+	// --- Breakout rooms ---
+	app.Post("/v1/live/:id/breakouts", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		lid := c.Params("id")
+		// verify permission: tutor or school admin for the class/school of the parent room
+		var classID *string
+		var schoolID *string
+		_ = opts.DB.Get(&classID, `SELECT class_id FROM live_rooms WHERE id=$1`, lid)
+		_ = opts.DB.Get(&schoolID, `SELECT school_id FROM live_rooms WHERE id=$1`, lid)
+		allowed := false
+		if classID != nil && *classID != "" {
+			allowed, _ = auth.IsClassTutor(opts.DB, *classID, uid)
+		}
+		if !allowed && schoolID != nil && *schoolID != "" {
+			allowed, _ = auth.IsSchoolAdmin(opts.DB, *schoolID, uid)
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Count int `json:"count"`
+		}
+		_ = c.BodyParser(&body)
+		if body.Count <= 0 || body.Count > 20 {
+			body.Count = 4
+		}
+		created := []fiber.Map{}
+		for i := 1; i <= body.Count; i++ {
+			code := strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", ""))[:10]
+			url := strings.TrimRight(providerBase(), "/") + "/" + code
+			_, err = opts.DB.Exec(`INSERT INTO live_rooms (title, purpose, media, interaction, teacher_only, class_id, school_id, scheduled_at, room_code, provider_url, parent_room_id, breakout_index)
+				VALUES ($1,'study','video','interactive',false, $2, $3, now(), $4, $5, $6, $7)`, "Breakout "+strconv.Itoa(i), nullIfEmptyStr(ptrString(classID)), nullIfEmptyStr(ptrString(schoolID)), code, url, lid, i)
+			if err == nil {
+				created = append(created, fiber.Map{"roomCode": code, "url": url, "index": i})
+			}
+		}
+		return c.JSON(fiber.Map{"success": true, "data": created})
+	})
+	app.Get("/v1/live/:id/breakouts", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		lid := c.Params("id")
+		var classID *string
+		var schoolID *string
+		_ = opts.DB.Get(&classID, `SELECT class_id FROM live_rooms WHERE id=$1`, lid)
+		_ = opts.DB.Get(&schoolID, `SELECT school_id FROM live_rooms WHERE id=$1`, lid)
+		member := false
+		if classID != nil && *classID != "" {
+			member = isClassMember(*classID, uid)
+		}
+		if !member && schoolID != nil && *schoolID != "" {
+			_ = opts.DB.Get(&member, `SELECT EXISTS (SELECT 1 FROM school_members WHERE school_id=$1 AND user_id=$2 AND status='active')`, *schoolID, uid)
+		}
+		if !member {
+			return fiber.ErrForbidden
+		}
+		var rows []struct {
+			RoomCode, ProviderURL string
+			Index                 *int
+		}
+		if err := opts.DB.Select(&rows, `SELECT room_code, provider_url, breakout_index FROM live_rooms WHERE parent_room_id=$1 ORDER BY breakout_index`, lid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
 	})
 
 	// --- Appointments / Office Hours ---
@@ -6786,10 +7984,10 @@ func nullIfEmptyJSON(j json.RawMessage) any {
 	return j
 }
 func nullIfEmptyStr(s string) any {
-    if strings.TrimSpace(s) == "" {
-        return nil
-    }
-    return s
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return s
 }
 func coalesceString(ptr *string) string {
 	if ptr == nil {
@@ -6798,18 +7996,36 @@ func coalesceString(ptr *string) string {
 	return *ptr
 }
 
+// simple string pointer to string helper for nullIfEmptyStr usage
+func ptrString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// tiny string hasher for bucketing (not cryptographic)
+func hash(s string) uint32 {
+	var h uint32 = 2166136261
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= 16777619
+	}
+	return h
+}
+
 // helper: refund charge by gateway_ref for stripe
 func stripeRefund(chargeID string) (any, error) {
-    if strings.TrimSpace(chargeID) == "" {
-        return nil, fmt.Errorf("missing charge id")
-    }
-    // Stripe refund by charge
-    params := &stripe.RefundParams{Charge: stripe.String(chargeID)}
-    r, err := refundNew(params)
-    return r, err
+	if strings.TrimSpace(chargeID) == "" {
+		return nil, fmt.Errorf("missing charge id")
+	}
+	// Stripe refund by charge
+	params := &stripe.RefundParams{Charge: stripe.String(chargeID)}
+	r, err := refundNew(params)
+	return r, err
 }
 
 // wrapped for testability
 var refundNew = func(p *stripe.RefundParams) (*stripe.Refund, error) {
-    return refund.New(p)
+	return refund.New(p)
 }
