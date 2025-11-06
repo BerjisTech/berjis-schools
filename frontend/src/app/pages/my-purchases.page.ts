@@ -11,7 +11,7 @@ import { urlFor } from '../../app/util';
 })
 export class MyPurchasesPage implements OnInit {
   loading = true;
-  rows: Array<any> = [];
+  rows: any[] = [];
   api = urlFor('schools-api');
   async ngOnInit() {
     this.loading = true;
@@ -22,4 +22,3 @@ export class MyPurchasesPage implements OnInit {
     } finally { this.loading = false; }
   }
 }
-

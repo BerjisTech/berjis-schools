@@ -253,12 +253,14 @@ This checklist verifies that an educational platform meets all functional requir
 - [ ] Digital wallet support (PayPal, etc.)
 - [ ] Regional payment methods (UPI, Alipay, etc.)
 - [ ] Subscription management
+ - [x] Subscription management
 - [x] One-time payment for courses
 - [x] Refund processing system
 
 ### 9.2 Revenue Models
 - [x] Commission system for independent course sales
 - [ ] School subscription tiers
+ - [x] School subscription tiers
 - [ ] Freemium features configuration
 - [x] Promotional codes and discounts
 - [x] Revenue sharing for partnered content

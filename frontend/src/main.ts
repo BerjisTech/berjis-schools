@@ -83,12 +83,12 @@ try {
   const api = (window as any).SCHOOLS_API || (window.location.origin);
   window.addEventListener('error', (e) => {
     try {
-      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e.message || 'error'), url: window.location.href, stack: String((e as any).error?.stack || ''), context: { filename: (e as any).filename, lineno: (e as any).lineno, colno: (e as any).colno } }) }).catch(() => { });
-    } catch { }
+      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e.message || 'error'), url: window.location.href, stack: String((e as any).error?.stack || ''), context: { filename: (e as any).filename, lineno: (e as any).lineno, colno: (e as any).colno } }) }).catch((err) => console.error('error post failed', err));
+    } catch (err) { console.error('error capture failed', err); }
   });
   window.addEventListener('unhandledrejection', (e: any) => {
     try {
-      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e?.reason?.message || 'unhandledrejection'), url: window.location.href, stack: String(e?.reason?.stack || ''), context: {} }) }).catch(() => { });
-    } catch { }
+      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e?.reason?.message || 'unhandledrejection'), url: window.location.href, stack: String(e?.reason?.stack || ''), context: {} }) }).catch((err) => console.error('unhandledrejection post failed', err));
+    } catch (err) { console.error('unhandledrejection capture failed', err); }
   });
-} catch { }
+} catch (err) { console.error('global error init failed', err); }

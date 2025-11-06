@@ -12,8 +12,8 @@ import { SchoolsService } from '../services/schools.service';
 export class YearsTermsPage implements OnInit {
   schools: Array<{ id: string; name: string }> = [];
   selectedSchool = signal<string>('');
-  years = signal<Array<any>>([]);
-  terms = signal<Array<any>>([]);
+  years = signal<any[]>([]);
+  terms = signal<any[]>([]);
   // new year
   yn = { name: '', startDate: '', endDate: '' };
   // new term

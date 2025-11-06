@@ -12,7 +12,7 @@ import { SchoolsService } from '../services/schools.service';
 export class SectionsPage implements OnInit {
   schools: Array<{ id: string; name: string }> = [];
   selectedSchool = signal<string>('');
-  sections = signal<Array<any>>([]);
+  sections = signal<any[]>([]);
   selectedSection = signal<string>('');
   members = signal<Array<{ studentUserId: string }>>([]);
   newSection = { name: '', gradeLevel: '' };

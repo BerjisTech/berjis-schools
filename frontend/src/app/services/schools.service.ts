@@ -765,6 +765,25 @@ export class SchoolsService {
     const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/peer-reviews`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, comment }) });
     return !!(await res.json())?.success;
   }
+
+  // Subscription & plans
+  async listPlans(): Promise<Array<{ id: string; key: string; name: string; price: number; currency: string; interval: string }>> {
+    const res = await fetch(`${this.api}/v1/billing/plans`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async getSchoolSubscription(schoolId: string): Promise<{ status?: string; plan?: string; periodEnd?: string } | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/subscription`, { credentials: 'include' });
+    if (!res.ok) return null;
+    return (await res.json())?.data ?? null;
+  }
+  async subscribeSchool(schoolId: string, plan: string, opts?: { successUrl?: string; cancelUrl?: string }): Promise<{ url?: string } | null> {
+    const body: any = { plan, successUrl: opts?.successUrl ?? window.location.origin + '/settings/payments', cancelUrl: opts?.cancelUrl ?? window.location.href };
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/subscribe`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data ?? null;
+  }
   async startGroupCall(groupId: string): Promise<{ url: string; roomCode: string } | null> {
     const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/call/start`, { method: 'POST', credentials: 'include' });
     const j = await res.json();

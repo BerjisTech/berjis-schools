@@ -17,5 +17,25 @@
     </div>
     <button class="px-4 py-2 rounded bg-blue-600 text-white" (click)="save()">Save</button>
   </section>
-</div>
 
+  <section class="border rounded-xl bg-white shadow-sm p-5 space-y-4">
+    <div class="flex items-center gap-3">
+      <div class="text-sm font-semibold">School Subscription</div>
+      <select class="border rounded px-2 py-1" [ngModel]="selectedSchool()" (ngModelChange)="selectedSchool.set($event); reloadSub()">
+        <option *ngFor="let s of schools" [ngValue]="s.id">{{ s.name }}</option>
+      </select>
+    </div>
+    <div *ngIf="currentSub as sub" class="text-sm text-slate-700">
+      Status: <span class="font-medium">{{ sub?.status || 'none' }}</span>
+      <span *ngIf="sub?.plan">• Plan: {{ sub.plan }}</span>
+      <span *ngIf="sub?.periodEnd">• Renews: {{ sub.periodEnd | date:'mediumDate' }}</span>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div *ngFor="let p of plans" class="border rounded p-3">
+        <div class="font-medium">{{ p.name }}</div>
+        <div class="text-sm text-slate-600">{{ (p.price/100) | currency:p.currency }} / {{ p.interval }}</div>
+        <button class="mt-2 px-3 py-1 rounded bg-blue-700 text-white" (click)="subscribe(p.key)" [disabled]="busy">Subscribe</button>
+      </div>
+    </div>
+  </section>
+</div>

@@ -6018,6 +6018,16 @@ func New(opts Options) *fiber.App {
 			classID := s.Metadata["class_id"]
 			buyer := s.Metadata["buyer_user_id"]
 			couponCode := s.Metadata["coupon_code"]
+			// subscription checkout flow
+			if s.Mode == stripe.CheckoutSessionModeSubscription {
+				schoolID := s.Metadata["school_id"]
+				planID := s.Metadata["plan_id"]
+				if schoolID != "" && planID != "" {
+					_, _ = opts.DB.Exec(`INSERT INTO subscriptions (school_id, plan_id, status, stripe_customer_id, stripe_subscription_id, current_period_end)
+					VALUES ($1,$2,'active', NULLIF($3,''), NULLIF($4,''), to_timestamp($5))`, schoolID, planID, coalesceString(&s.Customer.ID), coalesceString(&s.Subscription.ID), s.ExpiresAt)
+				}
+				return c.JSON(fiber.Map{"success": true})
+			}
 			if payID != "" {
 				_, _ = opts.DB.Exec(`UPDATE payments SET status='succeeded', gateway_ref=$1, updated_at=now() WHERE id=$2`, s.ID, payID)
 			}
@@ -6070,6 +6080,14 @@ func New(opts Options) *fiber.App {
 			_ = json.Unmarshal(evt.Data.Raw, &ch)
 			ref := ch.ID
 			_, _ = opts.DB.Exec(`UPDATE payments SET status='refunded', updated_at=now() WHERE gateway_ref=$1`, ref)
+		case "customer.subscription.updated", "customer.subscription.created":
+			var sub stripe.Subscription
+			_ = json.Unmarshal(evt.Data.Raw, &sub)
+			_, _ = opts.DB.Exec(`UPDATE subscriptions SET status=$1, stripe_customer_id=COALESCE(NULLIF($2,''), stripe_customer_id), stripe_subscription_id=COALESCE(NULLIF($3,''), stripe_subscription_id), current_period_end=to_timestamp($4), updated_at=now() WHERE stripe_subscription_id=$3`, string(sub.Status), sub.Customer.ID, sub.ID, sub.CurrentPeriodEnd)
+		case "customer.subscription.deleted":
+			var sub stripe.Subscription
+			_ = json.Unmarshal(evt.Data.Raw, &sub)
+			_, _ = opts.DB.Exec(`UPDATE subscriptions SET status='canceled', updated_at=now() WHERE stripe_subscription_id=$1`, sub.ID)
 		}
 		return c.JSON(fiber.Map{"success": true})
 	})
@@ -6224,6 +6242,122 @@ func New(opts Options) *fiber.App {
 		_ = opts.DB.Get(&users, `SELECT COUNT(DISTINCT user_id) FROM class_enrollments`)
 		uptime := time.Since(start).Seconds()
 		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"uptimeSeconds": uptime, "studentsEnrolled": users}})
+	})
+
+	// Billing: plans
+	app.Get("/v1/billing/plans", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		var rows []struct {
+			ID, Key, Name, Currency, Interval, StripePriceID string
+			Price                                            int
+			Active                                           bool
+		}
+		if err := opts.DB.Select(&rows, `SELECT id, pkey AS key, name, price_cents AS price, currency, interval, COALESCE(stripe_price_id,'') AS stripe_price_id, active FROM subscription_plans WHERE active=true ORDER BY price_cents`); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/billing/plans", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		if !isPlatformAdmin(uid) {
+			return fiber.ErrForbidden
+		}
+		var b struct {
+			Key, Name                         string
+			Price                             int
+			Currency, Interval, StripePriceID string
+			Active                            *bool
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Key) == "" || strings.TrimSpace(b.Name) == "" || b.Price <= 0 {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO subscription_plans (pkey, name, price_cents, currency, interval, stripe_price_id, active) VALUES ($1,$2,$3,COALESCE(NULLIF($4,''),'USD'),COALESCE(NULLIF($5,''),'month'), NULLIF($6,''), COALESCE($7,TRUE))
+			ON CONFLICT (pkey) DO UPDATE SET name=EXCLUDED.name, price_cents=EXCLUDED.price_cents, currency=EXCLUDED.currency, interval=EXCLUDED.interval, stripe_price_id=EXCLUDED.stripe_price_id, active=COALESCE($7, subscription_plans.active), updated_at=now()`, b.Key, b.Name, b.Price, b.Currency, b.Interval, b.StripePriceID, b.Active)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Billing: subscribe school (Stripe hosted session)
+	app.Post("/v1/schools/:id/subscribe", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var b struct {
+			Plan                  string
+			SuccessURL, CancelURL string
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Plan) == "" {
+			return fiber.ErrBadRequest
+		}
+		var plan struct {
+			ID, Stripe         string
+			Price              int
+			Currency, Interval string
+		}
+		if err := opts.DB.Get(&plan, `SELECT id, COALESCE(stripe_price_id,'') AS stripe, price_cents AS price, currency, interval FROM subscription_plans WHERE (pkey=$1 OR id::text=$1) AND active=true`, strings.TrimSpace(b.Plan)); err != nil {
+			return fiber.ErrNotFound
+		}
+		if plan.Stripe == "" {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "Plan missing Stripe price id"})
+		}
+		gateway := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
+		if gateway == "" {
+			return c.Status(503).JSON(fiber.Map{"success": false, "message": "Stripe not configured"})
+		}
+		stripe.Key = gateway
+		params := &stripe.CheckoutSessionParams{
+			Mode:       stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+			SuccessURL: stripe.String(strings.TrimSpace(b.SuccessURL)),
+			CancelURL:  stripe.String(strings.TrimSpace(b.CancelURL)),
+			LineItems:  []*stripe.CheckoutSessionLineItemParams{{Price: stripe.String(plan.Stripe), Quantity: stripe.Int64(1)}},
+			Metadata:   map[string]string{"school_id": sid, "plan_id": plan.ID},
+		}
+		s, err := session.New(params)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"url": s.URL}})
+	})
+
+	app.Get("/v1/schools/:id/subscription", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		member, _ := auth.IsSchoolMember(opts.DB, sid, uid)
+		if !member {
+			return fiber.ErrForbidden
+		}
+		var row struct {
+			Status    string
+			Plan      string
+			PeriodEnd *time.Time
+		}
+		_ = opts.DB.Get(&row, `SELECT s.status, p.name AS plan, s.current_period_end FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.school_id=$1 ORDER BY s.updated_at DESC LIMIT 1`, sid)
+		return c.JSON(fiber.Map{"success": true, "data": row})
 	})
 
 	// Engagement metrics (simple)
