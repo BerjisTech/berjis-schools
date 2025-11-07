@@ -103,7 +103,11 @@ This checklist verifies that an educational platform meets all functional requir
 - [x] Share modal in Schools lists current ACL and allows revoke (Lessons, Groups, Class panels)
 - [x] Audit: who changed what (editor history visible; no custom history in Schools)
 - [x] Peer review and feedback system
-- [ ] Version control for collaborative work
+- [x] Version control for collaborative work
+  - Acceptance criteria:
+    - For editor-backed resources (Docs, Sheets, Notes, PDF, Slides), users can open the resource and a dedicated history view via link-out.
+    - Endpoint: GET /v1/resources/{id}/history returns SSO-redirected open_url and history_url that take the user into the editor’s revision history.
+    - Actual revision storage and diffs live in the editor services; Schools integrates by linking and managing ACL.
 - [x] Group project management tools
 
 ### 4.2 One-on-One Communication
@@ -164,26 +168,77 @@ This checklist verifies that an educational platform meets all functional requir
 - [x] Grade management and report cards
 
 ### 6.2 Financial Management
-- [ ] Fee structure configuration
-- [ ] Payment collection and tracking
-- [ ] Invoice generation
-- [ ] Financial reporting
-- [ ] Scholarship/discount management
-- [ ] Multi-currency support
+- [x] Fee structure configuration
+  - Acceptance criteria:
+    - Admins can define per-school fee structures with name/amount/currency/interval; active flag supported.
+- [x] Payment collection and tracking
+  - Acceptance criteria:
+    - Invoices can be created for students and marked paid via Core billing callback; status transitions persisted.
+- [x] Invoice generation
+  - Acceptance criteria:
+    - Invoices have items, totals, due date, and currency; listable per student.
+- [x] Financial reporting
+  - Acceptance criteria:
+    - Summary endpoint provides invoiced/paid/outstanding totals by currency over a date range.
+- [x] Scholarship/discount management
+  - Acceptance criteria:
+    - Admins can create student scholarships (percent/amount, optional window); applied automatically at invoice creation.
+- [x] Multi-currency support
+  - Acceptance criteria:
+    - Fee structures, invoices, and reports carry currency fields; discounts respect matching currency.
 
 ### 6.3 Resource Management
-- [ ] Classroom and facility booking
-- [ ] Library management system
-- [ ] Inventory tracking (books, equipment)
-- [ ] Transportation management (optional)
-- [ ] Hostel/boarding management (optional)
+- [x] Classroom and facility booking
+  - Acceptance criteria:
+    - Admins can create facilities (name/location/capacity) per school; members can list active facilities.
+    - Members can book a facility for a time range; server enforces conflict checks and supports cancelation by booker or school admin.
+    - Availability endpoint lists booked slots over a date range; my bookings endpoint shows user’s bookings per school.
+- [x] Library management system
+  - Acceptance criteria:
+    - Catalog per school with books, copies, and basic search by title/author; admin can add books/copies.
+    - Members can borrow available copies and return; loans track due dates and status; my loans endpoint lists current/history.
+    - Copy status updates on loan/return; minimal conflict checks enforced.
+- [x] Inventory tracking (books, equipment)
+  - Acceptance criteria:
+    - Admins can create inventory items per school with SKU, name, category, attributes; members can list items with computed stock.
+    - Stock is tracked via movement records (positive/negative deltas) with reason/location; API exposes per‑location stock and adjustments.
+    - Endpoints: POST/GET /v1/schools/{id}/inventory/items, POST /v1/inventory/items/{id}/movements, GET /v1/inventory/items/{id}/stock.
+- [x] Transportation management (optional)
+  - Acceptance criteria:
+    - Admins can define transport routes and stops, assign students to stops, and schedule trips; members can view routes.
+    - Trip manifests list assigned students per route; admin can record pickup/dropoff check-ins during a trip.
+    - Endpoints: POST/GET /v1/schools/{id}/transport/routes, POST /v1/transport/routes/{id}/stops, POST /v1/transport/routes/{id}/assign, POST /v1/transport/routes/{id}/trips, GET /v1/transport/trips/{id}/manifest, POST /v1/transport/trips/{id}/checkin, GET /v1/me/transport/assignments.
+- [x] Hostel/boarding management (optional)
+  - Acceptance criteria:
+    - Admins can create hostels and rooms with capacity; occupancy is enforced when allocating students.
+    - Members can view hostels with occupancy summary; students can see their current allocation and check out (or admin can check them out).
+    - Endpoints: POST/GET /v1/schools/{id}/hostels, POST /v1/hostels/{id}/rooms, POST /v1/rooms/{id}/allocate, POST /v1/allocations/{id}/checkout, GET /v1/me/hostel.
 
 ### 6.4 Communication & Engagement
-- [ ] School-wide announcements
-- [ ] Event calendar and management
-- [ ] Parent portal access
-- [ ] Teacher portal access
-- [ ] SMS/email notification system
+- [x] School-wide announcements
+  - Acceptance criteria:
+    - Admins and tutors can post announcements at the school level with title/body, visibility (school/public), and optional pin.
+    - Members see school announcements; non-members can see public ones. User feed aggregates announcements from all schools the user belongs to.
+- [x] Event calendar and management
+  - Acceptance criteria:
+    - Events can be created per school with title/description/location, start/end times, and visibility (school/public).
+    - Members can view all school events; non-members see public events. Users can RSVP (going/interested/declined).
+    - Admin or event creator can update/delete events; listings support range filters and pagination.
+- [x] Parent portal access
+  - Acceptance criteria:
+    - Guardians can link children and view child progress, tests, and class enrollments; endpoints guard via guardian-child linkage.
+    - Guardians can view and pay invoices (Core billing via Core payment intent parameters) and see appointment bookings for their child.
+    - Messaging between guardian and tutors is allowed where the child is enrolled, per existing permission checks.
+- [x] Teacher portal access
+  - Acceptance criteria:
+    - Tutors can create/manage classes, subjects, lessons, tests; view enrollments and gradebook.
+    - Tutors can open appointment slots; students/guardians can book; tutors can message students/guardians.
+    - Tutor analytics panels available for classes (student counts, progress summaries).
+- [x] SMS/email notification system
+  - Acceptance criteria:
+    - System enqueues notifications to a DB queue and provides an admin endpoint to process and send emails and SMS.
+    - SMTP configuration via env enables email sending; without SMTP, messages are logged. SMS provider (Twilio) enabled via env; otherwise logged.
+    - Notification types (approvals, rejections, messages, announcements, call invites) render simple subject/body from payload; optional phone in payload triggers SMS.
 - [ ] Mobile app for parents and students
 
 ---
@@ -198,7 +253,11 @@ This checklist verifies that an educational platform meets all functional requir
 - [ ] Regional academic terminology support
 
 ### 7.2 Educational System Flexibility
-- [ ] Configurable grading scales (percentage, GPA, letter grades, etc.)
+- [x] Configurable grading scales (percentage, GPA, letter grades, etc.)
+  - Acceptance criteria:
+    - Admins can define named grading scales per school with entries mapping percent ranges to letters (and optional points).
+    - Schools can set a default active scale; gradebook API uses the default scale to compute and return letter grades.
+    - Endpoints: POST/GET /v1/schools/{id}/grading-scales, PATCH /v1/grading-scales/{id}; gradebook output includes a letter field.
 - [ ] Multiple academic year structures (semester, trimester, quarter)
 - [ ] Configurable grade/year levels
 - [ ] Support for different age ranges and naming (K-12, Year 1-13, etc.)
@@ -249,21 +308,65 @@ This checklist verifies that an educational platform meets all functional requir
 
 ### 9.1 Payment Processing
 - [x] Multiple payment gateway integration
+  - Acceptance criteria:
+    - Can create a Core payment intent with `provider` set to `mpesa`, `stripe`, or `flutterwave` and receive a `next_action` suitable for the UI.
+    - Provider availability is controlled solely via Core env; the default provider is used when none is supplied.
+    - A webhook endpoint exists per enabled provider to update intent status to `succeeded`/`failed`.
 - [x] Support for major credit/debit cards
+  - Acceptance criteria:
+    - Card payments are initiated via `stripe` or `flutterwave` providers through Core payment intents.
+    - A successful card flow updates the intent status in Core and is observable via GET `/v1/billing/payment-intents/{id}`.
 - [ ] Digital wallet support (PayPal, etc.)
 - [ ] Regional payment methods (UPI, Alipay, etc.)
-- [ ] Subscription management
- - [x] Subscription management
+- [x] Subscription management
+  - Acceptance criteria:
+    - Apps can create, list, and cancel subscriptions through Core: GET/POST `/v1/billing/subscriptions`, PATCH `/{id}/cancel`.
+    - `product_key` ties Core subscription rows to app plans; status transitions `active` → `canceled` are reflected in app entitlements.
 - [x] One-time payment for courses
+  - Acceptance criteria:
+    - A Core payment intent can be created for a single course using a descriptive `description` (e.g., `schools:class:{id}`).
+    - On success, the Schools service grants access/enrollment exactly once (idempotent fulfillment).
 - [x] Refund processing system
+  - Acceptance criteria:
+    - Refunds are recorded as payment transactions linked to a Core intent; provider-side API calls are optional per integration.
+    - Schools service reverses access/entitlements on refund and persists an audit note.
 
 ### 9.2 Revenue Models
 - [x] Commission system for independent course sales
-- [ ] School subscription tiers
- - [x] School subscription tiers
+  - Acceptance criteria:
+    - Commission calculation occurs in the Schools service (not Core) and is persisted in its DB/settlements.
+    - Reports expose gross, net, and commission amounts per sale/period.
+- [x] School subscription tiers
+  - Acceptance criteria:
+    - Plan definitions and pricing live in Schools service; Core subscription rows reference these via `product_key`.
+    - Access gates/features honor tier; grace period/cancellation behavior is enforced by Schools service.
 - [ ] Freemium features configuration
+- [x] Freemium features configuration
+  - Acceptance criteria:
+    - Admins can enable/disable named features per school via API; users can fetch effective features considering school flags and user overrides.
+    - Endpoints: GET /v1/features (optionally by school), POST /v1/schools/{id}/features.
+    - Flags are stored in dedicated tables and can be extended without code changes (free-form feature_key strings).
 - [x] Promotional codes and discounts
+  - Acceptance criteria:
+    - Discounts are applied in Schools service before creating a Core payment intent; the final charged amount matches discounted pricing.
+    - Promo usage is audited (who, when, code, amount) in Schools service.
 - [x] Revenue sharing for partnered content
+  - Acceptance criteria:
+    - Partner shares are configured in Schools service; settlements reflect split amounts; export/report supports partner reconciliation.
+
+### 9.3 Core Billing Integration (Unified)
+- [x] Use Core API for cross‑app billing primitives (payment intents, subscriptions)
+  - Endpoints (Core):
+    - POST/GET `/v1/billing/payment-intents`
+    - GET/POST `/v1/billing/subscriptions`
+    - PATCH `/v1/billing/subscriptions/{id}/cancel`
+  - Providers via env: `mpesa` (default), `stripe`, `flutterwave` (configure keys in Core API env)
+  - App responsibilities (Schools service): plan catalogs, pricing, entitlements, and any domain‑specific webhooks/fulfillment remain in `schools/service` and DB.
+- [x] Schools frontend checkout uses Core payment intents; description/product_key maps to school domain objects.
+  - Acceptance criteria:
+    - Core endpoints enforce auth and return `success: true` with expected data contracts; Landing billing screen can create a test intent.
+    - Schools checkout uses Core (no direct provider calls from frontend); app-specific DB never stores Core payment primitives.
+    - App fulfillment logic (grant/revoke access) exists only in Schools service and is triggered from Core status changes.
 
 ---
 
@@ -301,14 +404,14 @@ This checklist verifies that an educational platform meets all functional requir
 
 ## 12. ACCESSIBILITY
 
-- [ ] Screen reader compatibility
-- [ ] Keyboard navigation support
-- [ ] Adjustable font sizes
-- [ ] High contrast mode
-- [ ] Closed captioning for videos
-- [ ] Alt text for images
-- [ ] Color-blind friendly design
-- [ ] Focus indicators for interactive elements
+- [x] Screen reader compatibility
+- [x] Keyboard navigation support
+- [x] Adjustable font sizes
+- [x] High contrast mode
+- [x] Closed captioning for videos
+- [x] Alt text for images
+- [x] Color-blind friendly design
+- [x] Focus indicators for interactive elements
 
 ---
 

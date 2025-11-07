@@ -16,6 +16,8 @@ interface LessonFormState {
   audioDuration: string;
   videoUrl: string;
   videoDuration: string;
+  captionsUrl: string;
+  transcript: string;
   liveMode: 'one_on_one' | 'group';
   liveStartsAt: string;
   liveEndsAt: string;
@@ -43,6 +45,8 @@ const createLessonFormDefaults = (): LessonFormState => ({
   audioDuration: '',
   videoUrl: '',
   videoDuration: '',
+  captionsUrl: '',
+  transcript: '',
   liveMode: 'one_on_one',
   liveStartsAt: '',
   liveEndsAt: '',
@@ -508,12 +512,15 @@ export class CourseOverviewComponent implements OnInit {
         return {
           url: form.audioUrl.trim() || undefined,
           durationSec: this.parseDuration(form.audioDuration),
+          ...(form.transcript.trim() ? { transcript: form.transcript.trim() } : {}),
           ...base,
         };
       case 'video':
         return {
           url: form.videoUrl.trim() || undefined,
           durationSec: this.parseDuration(form.videoDuration),
+          ...(form.captionsUrl.trim() ? { captionsUrl: form.captionsUrl.trim() } : {}),
+          ...(form.transcript.trim() ? { transcript: form.transcript.trim() } : {}),
           ...base,
         };
       case 'live':

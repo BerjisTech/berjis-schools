@@ -5,10 +5,10 @@
       <input class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Enter certificate code" [ngModel]="code()" (ngModelChange)="code.set($event)" />
       <button class="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm" (click)="verify()" [disabled]="loading()">Verify</button>
     </div>
-    <div class="text-sm text-slate-500" *ngIf="loading()">Verifying…</div>
+    <div class="text-sm text-slate-500" *ngIf="loading()">Verifyingâ€¦</div>
     <div class="text-sm text-red-600" *ngIf="error()">{{ error() }}</div>
     <div *ngIf="result() as r" class="text-sm space-y-1">
-      <div>Status: <span class="font-medium">{{ r.status }}</span></div>
+      <div>Status: <span class="status-badge" [ngClass]="{ 'success': (r.status||'').toLowerCase()==='valid', 'warning': (r.status||'').toLowerCase()==='expired', 'danger': (r.status||'').toLowerCase()==='revoked' }">{{ r.status }}</span></div>
       <div>Template: {{ r.template }}</div>
       <div>Recipient: {{ r.recipient?.name }} ({{ r.recipient?.userId }})</div>
       <div>Issued: {{ r.issuedAt | date:'mediumDate' }}</div>
@@ -18,3 +18,4 @@
     </div>
   </div>
 </div>
+

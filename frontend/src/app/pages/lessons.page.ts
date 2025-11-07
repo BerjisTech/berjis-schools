@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { LessonCaptionsComponent } from '../components/course/lesson-captions.component';
 import { SchoolsService } from '../services/schools.service';
 import { Course, Lesson, Subject } from '../interfaces/course';
 
@@ -18,7 +19,7 @@ interface CourseLessons {
 @Component({
   selector: 'app-lessons-page',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, LessonCaptionsComponent],
   templateUrl: './lessons.page.html'
 })
 export class LessonsPage implements OnInit {

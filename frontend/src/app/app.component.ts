@@ -20,6 +20,9 @@ export class AppComponent implements OnInit {
   search = signal('');
   loginHref = loginUrl();
   isDark = false;
+  fontScale = 1; // 1.0x, cycles upward
+  isHighContrast = false;
+  announce = signal('');
 
   constructor(private router: Router, private i18n: I18nService) {}
 
@@ -27,6 +30,18 @@ export class AppComponent implements OnInit {
     const persisted = (localStorage.getItem('theme') || '').toLowerCase();
     const preferDark = persisted === 'dark';
     this.setTheme(preferDark ? 'dark' : 'light');
+    // restore accessibility prefs
+    const fs = parseFloat(localStorage.getItem('fontScale') || '1');
+    if (!Number.isNaN(fs)) { this.setFontScale(Math.min(Math.max(fs, 1), 1.5)); }
+    const contrast = (localStorage.getItem('contrast') || 'off').toLowerCase();
+    this.setContrast(contrast === 'on');
+    // announce on route change and move focus to main content
+    this.router.events.subscribe(() => {
+      const main = document.getElementById('main-content') as HTMLElement | null;
+      if (main) { main.focus(); }
+      const title = document.title || 'Page';
+      this.announce.set(`Navigated to ${title}`);
+    });
     try {
       const result = await verifySession({ attemptRefresh: true });
       this.authed.set(!!result.valid);
@@ -49,6 +64,27 @@ export class AppComponent implements OnInit {
     this.isDark = mode === 'dark';
     document.documentElement.classList.toggle('dark', mode === 'dark');
     try { localStorage.setItem('theme', mode); } catch { /* no-op: localStorage not available */ }
+  }
+
+  // Accessibility: adjustable font sizes (scales rem root)
+  toggleFontScale() {
+    const steps = [1, 1.125, 1.25, 1.5];
+    const idx = steps.findIndex(s => Math.abs(s - this.fontScale) < 0.001);
+    const next = steps[(idx + 1) % steps.length];
+    this.setFontScale(next);
+  }
+  private setFontScale(scale: number) {
+    this.fontScale = scale;
+    document.documentElement.style.setProperty('--font-scale', String(scale));
+    try { localStorage.setItem('fontScale', String(scale)); } catch { /* ignore */ }
+  }
+
+  // Accessibility: high contrast mode
+  toggleContrast() { this.setContrast(!this.isHighContrast); }
+  private setContrast(on: boolean) {
+    this.isHighContrast = on;
+    document.documentElement.classList.toggle('contrast', on);
+    try { localStorage.setItem('contrast', on ? 'on' : 'off'); } catch { /* ignore */ }
   }
 
   setLang(lang: string) { this.i18n.setLang(lang); }

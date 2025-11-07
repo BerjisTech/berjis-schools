@@ -52,7 +52,12 @@
                         <div class="text-xs text-slate-400">No description yet.</div>
                       </ng-template>
                     </div>
-                    <span class="text-[11px] uppercase tracking-wide text-slate-500">{{ subjectBlock.subject.status ? (subjectBlock.subject.status | titlecase) : 'Active' }}</span>
+                    <span class="status-badge"
+                      [ngClass]="{
+                        'success': (subjectBlock.subject.status || 'active') === 'active',
+                        'warning': (subjectBlock.subject.status || 'active') === 'archived',
+                        'danger': (subjectBlock.subject.status || '') === 'deleted'
+                      }">{{ subjectBlock.subject.status ? (subjectBlock.subject.status | titlecase) : 'Active' }}</span>
                   </div>
                   <div class="mt-4 grid gap-3 lg:grid-cols-2">
                     <div *ngFor="let lesson of subjectBlock.lessons" class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
@@ -67,7 +72,12 @@
                             Access: {{ lesson.isFree ? 'Free' : 'Enrolled only' }}
                           </div>
                         </div>
-                        <span class="text-[11px] uppercase tracking-wide text-slate-500">{{ lesson.status ? (lesson.status | titlecase) : 'Active' }}</span>
+                        <span class="status-badge"
+                          [ngClass]="{
+                            'success': (lesson.status || 'active') === 'active',
+                            'warning': (lesson.status || 'active') === 'archived',
+                            'danger': (lesson.status || '') === 'deleted'
+                          }">{{ lesson.status ? (lesson.status | titlecase) : 'Active' }}</span>
                       </div>
                       <div class="mt-3 flex flex-wrap gap-2">
                         <a [routerLink]="['/course', entry.course.id, 'lessons', lesson.id]" class="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
@@ -83,8 +93,9 @@
                           Resources
                         </button>
                       </div>
-                      <div *ngIf="resourcesOpen()[lesson.id]" class="mt-3">
+                      <div *ngIf="resourcesOpen()[lesson.id]" class="mt-3 space-y-3">
                         <app-resources-panel [scope]="'lesson'" [scopeId]="lesson.id" [canManage]="entry.isOwner" [quickPrincipal]="{ type: 'class', id: (entry.course.id), label: 'Class' }"></app-resources-panel>
+                        <app-lesson-captions [lessonId]="lesson.id" [lesson]="lesson" [canManage]="entry.isOwner"></app-lesson-captions>
                       </div>
                     </div>
                   </div>

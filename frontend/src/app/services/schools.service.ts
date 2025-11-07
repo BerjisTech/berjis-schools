@@ -29,6 +29,7 @@ interface TestWithQuestionsApi { test: TestApi; questions: any[] }
 @Injectable({ providedIn: 'root' })
 export class SchoolsService {
   private api = urlFor('schools-api');
+  private core = urlFor('api');
   private currentUserIdCache: string | null | undefined;
 
   async listCourses(): Promise<Course[]> {
@@ -72,19 +73,25 @@ export class SchoolsService {
   }
 
   async checkout(courseId: string, opts: { gateway?: 'stripe'|'flutterwave'|'mpesa'; mode?: 'hosted'; currency?: string; successUrl?: string; cancelUrl?: string; phone?: string } = {}): Promise<{ url?: string; paymentId?: string } | null> {
-    const body: any = {
-      classId: courseId,
-      gateway: opts.gateway ?? (localStorage.getItem('payments.gateway') as any) ?? 'stripe',
-      currency: opts.currency ?? 'USD',
-      mode: opts.mode ?? 'hosted',
-      successUrl: opts.successUrl ?? window.location.origin + '/classes',
-      cancelUrl: opts.cancelUrl ?? window.location.href,
-      phone: opts.phone ?? localStorage.getItem('payments.mpesaPhone') ?? undefined
-    };
-    const res = await fetch(`${this.api}/v1/payments/checkout`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    // Use Core API payment intents; app-specific price lives in Schools data
+    const course = await this.getCourse(courseId);
+    if (!course) return null;
+    const provider = (opts.gateway ?? (localStorage.getItem('payments.gateway') as any) ?? 'stripe') as 'stripe'|'flutterwave'|'mpesa';
+    const currency = opts.currency ?? (provider === 'mpesa' ? 'KES' : 'USD');
+    const amount = Math.max(0, Number(course.priceCents ?? 0));
+    const body = {
+      amount_cents: amount,
+      currency,
+      description: `schools:class:${courseId}`,
+      provider
+    } as any;
+    const res = await fetch(`${this.core}/v1/billing/payment-intents`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) return null;
-    const j = await res.json();
-    return j?.data ?? null;
+    const json = await res.json();
+    const intent = json?.data?.intent;
+    const next = json?.data?.next_action;
+    const url = next?.url || next?.alternate?.url || undefined;
+    return { url, paymentId: intent ? String(intent.id) : undefined };
   }
 
   async listSubjects(classId: string): Promise<Subject[]> {
@@ -643,6 +650,18 @@ export class SchoolsService {
     return !!(await res.json())?.success;
   }
 
+  async updateLesson(lessonId: string, payload: { title?: string; type?: 'text'|'audio'|'video'|'live'|'simulation'; content?: any; orderIndex?: number; isFree?: boolean; status?: 'active'|'archived'|'deleted' }): Promise<boolean> {
+    const body: any = {};
+    if (payload.title !== undefined) body.title = payload.title;
+    if (payload.type !== undefined) body.type = payload.type;
+    if (payload.content !== undefined) body.content = payload.content;
+    if (payload.orderIndex !== undefined) body.orderIndex = payload.orderIndex;
+    if (payload.isFree !== undefined) body.isFree = payload.isFree;
+    if (payload.status !== undefined) body.status = payload.status;
+    const res = await fetch(`${this.api}/v1/lessons/${lessonId}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return res.ok;
+  }
+
   // Feedback and bug reports
   async submitFeedback(input: { category: 'ux'|'feature'|'content'|'other'; message: string; context?: string }): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/feedback`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -783,6 +802,285 @@ export class SchoolsService {
     if (!res.ok) return null;
     const j = await res.json();
     return j?.data ?? null;
+  }
+
+  // Financial Management: Invoices
+  async listMyInvoices(): Promise<Array<{ id: string; school_id: string; status: string; total_cents: number; currency: string; due_date?: string }>> {
+    const res = await fetch(`${this.api}/v1/me/invoices`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  async getInvoiceCorePaymentParams(id: string): Promise<{ amount_cents: number; currency: string; description: string } | null> {
+    const res = await fetch(`${this.api}/v1/invoices/${encodeURIComponent(id)}/core-payment`, { credentials: 'include' });
+    if (!res.ok) return null;
+    return (await res.json())?.data ?? null;
+  }
+
+  async recordInvoicePayment(id: string, coreIntentId: number, status: string = 'succeeded'): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/invoices/${encodeURIComponent(id)}/payments`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ core_intent_id: coreIntentId, status }) });
+    return !!(await res.json())?.success;
+  }
+
+  // Announcements
+  async listSchoolAnnouncements(schoolId: string, opts?: { limit?: number; offset?: number }): Promise<Array<{ id: string; title: string; body: string; author: string; visibility: string; pinned: boolean; createdAt: string }>> {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.offset) params.set('offset', String(opts.offset));
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/announcements?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  async createSchoolAnnouncement(schoolId: string, input: { title: string; body: string; visibility?: 'school'|'public'; pinned?: boolean }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/announcements`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+
+  async myAnnouncementsFeed(opts?: { limit?: number; offset?: number }) {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.offset) params.set('offset', String(opts.offset));
+    const res = await fetch(`${this.api}/v1/me/announcements?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  // Events
+  async listSchoolEvents(schoolId: string, opts?: { from?: string; to?: string; limit?: number; offset?: number }) {
+    const params = new URLSearchParams();
+    if (opts?.from) params.set('from', opts.from);
+    if (opts?.to) params.set('to', opts.to);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.offset) params.set('offset', String(opts.offset));
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/events?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  async createSchoolEvent(schoolId: string, input: { title: string; description?: string; location?: string; starts_at: string; ends_at?: string; visibility?: 'school'|'public' }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/events`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+
+  async getEvent(id: string) {
+    const res = await fetch(`${this.api}/v1/events/${encodeURIComponent(id)}`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+
+  async rsvpEvent(id: string, status: 'going'|'interested'|'declined' = 'interested') {
+    const res = await fetch(`${this.api}/v1/events/${encodeURIComponent(id)}/rsvp`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    return !!(await res.json())?.success;
+  }
+
+  async updateEvent(id: string, input: Partial<{ title: string; description: string; location: string; starts_at: string; ends_at: string; visibility: 'school'|'public' }>) {
+    const res = await fetch(`${this.api}/v1/events/${encodeURIComponent(id)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+
+  async deleteEvent(id: string) {
+    const res = await fetch(`${this.api}/v1/events/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  // Freemium features
+  async getFeatures(opts?: { schoolId?: string }): Promise<Record<string, boolean>> {
+    const params = new URLSearchParams();
+    if (opts?.schoolId) params.set('school_id', opts.schoolId);
+    const res = await fetch(`${this.api}/v1/features?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? {}) as Record<string, boolean>;
+  }
+
+  async setSchoolFeature(schoolId: string, featureKey: string, enabled: boolean): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/features`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feature_key: featureKey, enabled }) });
+    return !!(await res.json())?.success;
+  }
+
+  // Facilities
+  async listFacilities(schoolId: string): Promise<Array<{ id: string; name: string; location?: string; capacity?: number }>> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/facilities`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  async createFacility(schoolId: string, input: { name: string; location?: string; capacity?: number; attributes?: Record<string, any> }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/facilities`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+
+  async updateFacility(id: string, patch: Partial<{ name: string; location: string; capacity: number; active: boolean }>): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/facilities/${encodeURIComponent(id)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    return !!(await res.json())?.success;
+  }
+
+  async facilityAvailability(id: string, opts?: { from?: string; to?: string }) {
+    const params = new URLSearchParams();
+    if (opts?.from) params.set('from', opts.from);
+    if (opts?.to) params.set('to', opts.to);
+    const res = await fetch(`${this.api}/v1/facilities/${encodeURIComponent(id)}/availability?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  async bookFacility(id: string, input: { title: string; description?: string; starts_at: string; ends_at: string }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/facilities/${encodeURIComponent(id)}/book`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+
+  async myFacilityBookings(opts?: { schoolId?: string }) {
+    const params = new URLSearchParams();
+    if (opts?.schoolId) params.set('school_id', opts.schoolId);
+    const res = await fetch(`${this.api}/v1/me/bookings?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  async cancelBooking(id: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/bookings/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  // Library
+  async libraryCreateBook(schoolId: string, input: { isbn?: string; title: string; author?: string; subject?: string; description?: string; cover_url?: string; tags?: Record<string, any> }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/library/books`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async libraryListBooks(schoolId: string, opts?: { q?: string; limit?: number; offset?: number }) {
+    const params = new URLSearchParams();
+    if (opts?.q) params.set('q', opts.q);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.offset) params.set('offset', String(opts.offset));
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/library/books?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async libraryAddCopy(bookId: string, barcode?: string): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/library/books/${encodeURIComponent(bookId)}/copies`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode }) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async libraryListCopies(bookId: string) {
+    const res = await fetch(`${this.api}/v1/library/books/${encodeURIComponent(bookId)}/copies`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async libraryLoanCopy(copyId: string): Promise<{ id: string; due_at: string } | null> {
+    const res = await fetch(`${this.api}/v1/library/copies/${encodeURIComponent(copyId)}/loan`, { method: 'POST', credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+  async libraryReturnLoan(loanId: string): Promise<boolean> {
+    const res = await fetch(`${this.api}/v1/library/loans/${encodeURIComponent(loanId)}/return`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+  async libraryMyLoans(status: 'active'|'history'='active') {
+    const params = new URLSearchParams({ status });
+    const res = await fetch(`${this.api}/v1/me/library/loans?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  // Inventory
+  async invCreateItem(schoolId: string, input: { sku?: string; name: string; category?: string; attributes?: Record<string, any> }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/inventory/items`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async invListItems(schoolId: string, q?: string) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/inventory/items?${params.toString()}`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async invAdjustStock(itemId: string, change: number, reason?: string, location?: string) {
+    const res = await fetch(`${this.api}/v1/inventory/items/${encodeURIComponent(itemId)}/movements`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ change, reason, location }) });
+    return !!(await res.json())?.success;
+  }
+  async invStockByLocation(itemId: string) {
+    const res = await fetch(`${this.api}/v1/inventory/items/${encodeURIComponent(itemId)}/stock`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+
+  // Hostel / Boarding
+  async hostelCreate(schoolId: string, input: { name: string; location?: string }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/hostels`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async hostelAddRoom(hostelId: string, input: { room_no: string; capacity?: number; gender?: string }): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/hostels/${encodeURIComponent(hostelId)}/rooms`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async listHostels(schoolId: string) {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/hostels`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async allocateRoom(roomId: string, studentUserId: string) {
+    const res = await fetch(`${this.api}/v1/rooms/${encodeURIComponent(roomId)}/allocate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_user_id: studentUserId }) });
+    return !!(await res.json())?.success;
+  }
+  async myHostel() {
+    const res = await fetch(`${this.api}/v1/me/hostel`, { credentials: 'include' });
+    const j = await res.json();
+    return j?.data ?? null;
+  }
+  async checkoutHostel(allocationId: string) {
+    const res = await fetch(`${this.api}/v1/allocations/${encodeURIComponent(allocationId)}/checkout`, { method: 'POST', credentials: 'include' });
+    return !!(await res.json())?.success;
+  }
+
+  // Transportation
+  async transportCreateRoute(schoolId: string, name: string): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/transport/routes`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async transportListRoutes(schoolId: string) {
+    const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/transport/routes`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async transportAddStop(routeId: string, input: { name: string; lat?: number; lng?: number; order_index?: number }) {
+    const res = await fetch(`${this.api}/v1/transport/routes/${encodeURIComponent(routeId)}/stops`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async transportAssign(routeId: string, student_user_id: string, stop_id: string) {
+    const res = await fetch(`${this.api}/v1/transport/routes/${encodeURIComponent(routeId)}/assign`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_user_id, stop_id }) });
+    return !!(await res.json())?.success;
+  }
+  async transportScheduleTrip(routeId: string, start_time: string): Promise<string | null> {
+    const res = await fetch(`${this.api}/v1/transport/routes/${encodeURIComponent(routeId)}/trips`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_time }) });
+    const j = await res.json();
+    return j?.data?.id ?? null;
+  }
+  async transportManifest(tripId: string) {
+    const res = await fetch(`${this.api}/v1/transport/trips/${encodeURIComponent(tripId)}/manifest`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
+  }
+  async transportCheckin(tripId: string, student_user_id: string, event: 'pickup'|'dropoff') {
+    const res = await fetch(`${this.api}/v1/transport/trips/${encodeURIComponent(tripId)}/checkin`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_user_id, event }) });
+    return !!(await res.json())?.success;
+  }
+  async myTransportAssignments() {
+    const res = await fetch(`${this.api}/v1/me/transport/assignments`, { credentials: 'include' });
+    const j = await res.json();
+    return (j?.data ?? []) as any[];
   }
   async startGroupCall(groupId: string): Promise<{ url: string; roomCode: string } | null> {
     const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/call/start`, { method: 'POST', credentials: 'include' });

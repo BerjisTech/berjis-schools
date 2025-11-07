@@ -21,6 +21,7 @@ import (
 	"math"
 	"mime/multipart"
 	"net/http"
+	"net/smtp"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,9 +31,18 @@ import (
 )
 
 type Options struct {
-	AllowedOrigins string
-	CoreAPIBase    string
-	DB             *sqlx.DB
+	AllowedOrigins   string
+	CoreAPIBase      string
+	DB               *sqlx.DB
+	SMTPHost         string
+	SMTPPort         string
+	SMTPUsername     string
+	SMTPPassword     string
+	SMTPFrom         string
+	SMSProvider      string
+	TwilioAccountSID string
+	TwilioAuthToken  string
+	TwilioFrom       string
 }
 
 func New(opts Options) *fiber.App {
@@ -151,6 +161,63 @@ func New(opts Options) *fiber.App {
 		}
 	}
 	app := fiber.New()
+
+	// Email sender (noop if SMTP not configured)
+	sendEmail := func(to, subject, body string) error {
+		if strings.TrimSpace(opts.SMTPHost) == "" {
+			// dev mode: log only
+			fmt.Printf("[email-mock] to=%s subject=%s\n", to, subject)
+			return nil
+		}
+		addr := fmt.Sprintf("%s:%s", strings.TrimSpace(opts.SMTPHost), strings.TrimSpace(opts.SMTPPort))
+		// Basic RFC822-like message
+		msg := []byte("To: " + to + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" +
+			body)
+		var auth smtp.Auth
+		if strings.TrimSpace(opts.SMTPUsername) != "" {
+			auth = smtp.PlainAuth("", strings.TrimSpace(opts.SMTPUsername), strings.TrimSpace(opts.SMTPPassword), strings.TrimSpace(opts.SMTPHost))
+		}
+		return smtp.SendMail(addr, auth, strings.TrimSpace(opts.SMTPFrom), []string{to}, msg)
+	}
+
+	// SMS sender (noop if provider not configured)
+	sendSMS := func(to, body string) error {
+		prov := strings.ToLower(strings.TrimSpace(opts.SMSProvider))
+		if prov == "" {
+			fmt.Printf("[sms-mock] to=%s body=%s\n", to, body)
+			return nil
+		}
+		switch prov {
+		case "twilio":
+			sid := strings.TrimSpace(opts.TwilioAccountSID)
+			tok := strings.TrimSpace(opts.TwilioAuthToken)
+			from := strings.TrimSpace(opts.TwilioFrom)
+			if sid == "" || tok == "" || from == "" {
+				return fmt.Errorf("twilio env missing")
+			}
+			form := url.Values{}
+			form.Set("To", to)
+			form.Set("From", from)
+			form.Set("Body", body)
+			req, _ := http.NewRequest("POST", fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", sid), strings.NewReader(form.Encode()))
+			req.SetBasicAuth(sid, tok)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			cli := &http.Client{Timeout: 10 * time.Second}
+			resp, err := cli.Do(req)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 300 {
+				return fmt.Errorf("twilio status %d", resp.StatusCode)
+			}
+			return nil
+		default:
+			return fmt.Errorf("sms provider %s not supported", prov)
+		}
+	}
 	ao := strings.TrimSpace(opts.AllowedOrigins)
 	allowCreds := true
 	if ao == "" || ao == "*" || strings.Contains(ao, "*") {
@@ -2125,6 +2192,30 @@ func New(opts Options) *fiber.App {
 			grades[a.UserID][a.TestID] = grade{Score: a.Score, Earned: earned, Max: max, Status: a.Status, SubmittedAt: a.At}
 		}
 		// Compute totals per student
+		// Find school for class and active grading scale
+		var schoolID *string
+		_ = opts.DB.Get(&schoolID, `SELECT school_id FROM classes WHERE id=$1`, classID)
+		type entry struct {
+			Min, Max float64
+			Letter   string
+		}
+		entries := []entry{}
+		if schoolID != nil && *schoolID != "" {
+			_ = opts.DB.Select(&entries, `SELECT e.min_percent AS min, e.max_percent AS max, e.letter FROM grading_scale_entries e JOIN grading_scales s ON s.id=e.scale_id WHERE s.school_id=$1 AND s.active=true AND s.is_default=true ORDER BY e.min_percent DESC`, *schoolID)
+		}
+		letterFor := func(pct *float64) *string {
+			if pct == nil || len(entries) == 0 {
+				return nil
+			}
+			for _, e := range entries {
+				if *pct+1e-9 >= e.Min && *pct <= e.Max+1e-9 {
+					v := e.Letter
+					return &v
+				}
+			}
+			return nil
+		}
+
 		rows := []fiber.Map{}
 		for _, s := range students {
 			totalEarned := 0.0
@@ -2146,7 +2237,7 @@ func New(opts Options) *fiber.App {
 			if s.DisplayName != nil && strings.TrimSpace(*s.DisplayName) != "" {
 				name = *s.DisplayName
 			}
-			rows = append(rows, fiber.Map{"userId": s.UserID, "name": name, "earned": totalEarned, "max": totalMax, "percent": percent, "grades": gmap})
+			rows = append(rows, fiber.Map{"userId": s.UserID, "name": name, "earned": totalEarned, "max": totalMax, "percent": percent, "letter": letterFor(percent), "grades": gmap})
 		}
 		// tests summary
 		testSumm := []fiber.Map{}
@@ -6858,6 +6949,725 @@ func New(opts Options) *fiber.App {
 		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"paymentId": payID, "gateway": gateway}})
 	})
 
+	// --- Financial Management: Fee Structures & Invoices ---
+	// List fee structures for a school (admin)
+	app.Get("/v1/schools/:id/fees", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		type F struct {
+			ID, Name, Currency string
+			AmountCents        int
+			Interval           string
+			Active             bool
+		}
+		rows := []F{}
+		_ = opts.DB.Select(&rows, `SELECT id, name, amount_cents, currency, interval, active FROM fee_structures WHERE school_id=$1 ORDER BY created_at DESC`, sid)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Create/update fee structure
+	app.Post("/v1/schools/:id/fees", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name        string `json:"name"`
+			AmountCents int    `json:"amount_cents"`
+			Currency    string `json:"currency"`
+			Interval    string `json:"interval"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" || body.AmountCents <= 0 {
+			return fiber.ErrBadRequest
+		}
+		if body.Currency == "" {
+			body.Currency = "USD"
+		}
+		if body.Interval == "" {
+			body.Interval = "term"
+		}
+		var id string
+		if err := opts.DB.Get(&id, `INSERT INTO fee_structures (school_id,name,amount_cents,currency,interval) VALUES ($1,$2,$3,$4,$5) RETURNING id`, sid, body.Name, body.AmountCents, body.Currency, body.Interval); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// Create an invoice for a student (admin)
+	app.Post("/v1/schools/:id/invoices", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			StudentUserID string  `json:"student_user_id"`
+			Currency      string  `json:"currency"`
+			DueDate       *string `json:"due_date"`
+			Items         []struct {
+				Description string `json:"description"`
+				AmountCents int    `json:"amount_cents"`
+				Quantity    int    `json:"quantity"`
+			} `json:"items"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StudentUserID) == "" || len(body.Items) == 0 {
+			return fiber.ErrBadRequest
+		}
+		if body.Currency == "" {
+			body.Currency = "USD"
+		}
+		total := 0
+		for _, it := range body.Items {
+			if it.AmountCents <= 0 || strings.TrimSpace(it.Description) == "" {
+				return fiber.ErrBadRequest
+			}
+			q := it.Quantity
+			if q <= 0 {
+				q = 1
+			}
+			total += it.AmountCents * q
+		}
+		// Apply scholarship if active
+		var disc int
+		var sch struct {
+			Percent *int    `db:"percent_off"`
+			Amount  *int    `db:"amount_off_cents"`
+			Curr    *string `db:"currency"`
+		}
+		err = opts.DB.Get(&sch, `SELECT percent_off, amount_off_cents, currency FROM scholarships WHERE school_id=$1 AND student_user_id=$2 AND (valid_from IS NULL OR valid_from<=CURRENT_DATE) AND (valid_to IS NULL OR valid_to>=CURRENT_DATE) ORDER BY created_at DESC LIMIT 1`, sid, body.StudentUserID)
+		if err == nil {
+			if sch.Percent != nil {
+				disc = (total * (*sch.Percent)) / 100
+			}
+			if sch.Amount != nil {
+				if sch.Curr == nil || strings.EqualFold(*sch.Curr, body.Currency) {
+					disc += *sch.Amount
+				}
+			}
+			if disc > total {
+				disc = total
+			}
+		}
+		grand := total - disc
+		var invID string
+		if err := opts.DB.Get(&invID, `INSERT INTO invoices (school_id, student_user_id, status, total_cents, currency, due_date) VALUES ($1,$2,'open',$3,$4,COALESCE($5::date,NULL)) RETURNING id`, sid, body.StudentUserID, grand, body.Currency, body.DueDate); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		for _, it := range body.Items {
+			q := it.Quantity
+			if q <= 0 {
+				q = 1
+			}
+			_, _ = opts.DB.Exec(`INSERT INTO invoice_items (invoice_id, description, amount_cents, quantity) VALUES ($1,$2,$3,$4)`, invID, it.Description, it.AmountCents, q)
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": invID, "total_cents": grand, "currency": body.Currency}})
+	})
+
+	// Create scholarship/discount for a student (admin)
+	app.Post("/v1/schools/:id/scholarships", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			StudentUserID  string  `json:"student_user_id"`
+			PercentOff     *int    `json:"percent_off"`
+			AmountOffCents *int    `json:"amount_off_cents"`
+			Currency       *string `json:"currency"`
+			ValidFrom      *string `json:"valid_from"`
+			ValidTo        *string `json:"valid_to"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StudentUserID) == "" {
+			return fiber.ErrBadRequest
+		}
+		if body.PercentOff == nil && body.AmountOffCents == nil {
+			return fiber.ErrBadRequest
+		}
+		var id string
+		if err := opts.DB.Get(&id, `INSERT INTO scholarships (school_id, student_user_id, percent_off, amount_off_cents, currency, valid_from, valid_to) VALUES ($1,$2,$3,$4,$5,COALESCE($6::date,NULL),COALESCE($7::date,NULL)) RETURNING id`, sid, body.StudentUserID, body.PercentOff, body.AmountOffCents, body.Currency, body.ValidFrom, body.ValidTo); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// List my invoices (student/parent)
+	app.Get("/v1/me/invoices", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rows := []struct {
+			ID       string  `db:"id" json:"id"`
+			SchoolID string  `db:"school_id" json:"school_id"`
+			Status   string  `db:"status" json:"status"`
+			Total    int     `db:"total_cents" json:"total_cents"`
+			Currency string  `db:"currency" json:"currency"`
+			Due      *string `db:"due_date" json:"due_date"`
+		}{}
+		_ = opts.DB.Select(&rows, `SELECT id, school_id, status, total_cents, currency, to_char(due_date,'YYYY-MM-DD') AS due_date FROM invoices WHERE student_user_id=$1 ORDER BY created_at DESC`, uid)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Return Core payment intent parameters for an invoice
+	app.Get("/v1/invoices/:id/core-payment", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var row struct {
+			Student  string `db:"student_user_id"`
+			Total    int    `db:"total_cents"`
+			Currency string `db:"currency"`
+		}
+		if err := opts.DB.Get(&row, `SELECT student_user_id, total_cents, currency FROM invoices WHERE id=$1`, id); err != nil {
+			return fiber.ErrNotFound
+		}
+		if row.Student != uid && !isPlatformAdmin(uid) {
+			return fiber.ErrForbidden
+		}
+		desc := fmt.Sprintf("schools:invoice:%s", id)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"amount_cents": row.Total, "currency": row.Currency, "description": desc}})
+	})
+
+	// Record invoice payment result from Core billing
+	app.Post("/v1/invoices/:id/payments", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var body struct {
+			CoreIntentID *int64 `json:"core_intent_id"`
+			Status       string `json:"status"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Status) == "" {
+			return fiber.ErrBadRequest
+		}
+		var student string
+		_ = opts.DB.Get(&student, `SELECT student_user_id FROM invoices WHERE id=$1`, id)
+		if student == "" {
+			return fiber.ErrNotFound
+		}
+		if student != uid && !isPlatformAdmin(uid) {
+			return fiber.ErrForbidden
+		}
+		st := strings.ToLower(strings.TrimSpace(body.Status))
+		if st == "succeeded" || st == "paid" {
+			_, _ = opts.DB.Exec(`UPDATE invoices SET status='paid', core_intent_id=COALESCE($1, core_intent_id), updated_at=now() WHERE id=$2`, body.CoreIntentID, id)
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Financial reporting summary per school
+	app.Get("/v1/schools/:id/reports/finance", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		from := strings.TrimSpace(c.Query("from"))
+		to := strings.TrimSpace(c.Query("to"))
+		cond := "WHERE school_id=$1"
+		args := []any{sid}
+		if from != "" {
+			cond += " AND created_at::date >= $2"
+			args = append(args, from)
+		}
+		if to != "" {
+			if len(args) == 1 {
+				cond += " AND created_at::date <= $2"
+			} else {
+				cond += " AND created_at::date <= $3"
+			}
+			args = append(args, to)
+		}
+		type Row struct {
+			Currency    string `db:"currency" json:"currency"`
+			Invoiced    int    `db:"invoiced" json:"invoiced_cents"`
+			Paid        int    `db:"paid" json:"paid_cents"`
+			Outstanding int    `db:"outstanding" json:"outstanding_cents"`
+		}
+		rows := []Row{}
+		q := "SELECT currency, COALESCE(SUM(total_cents),0) FILTER (WHERE status IN ('open','paid')) AS invoiced, COALESCE(SUM(total_cents),0) FILTER (WHERE status='paid') AS paid, COALESCE(SUM(total_cents),0) FILTER (WHERE status='open') AS outstanding FROM invoices " + cond + " GROUP BY currency"
+		if err := opts.DB.Select(&rows, opts.DB.Rebind(q), args...); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// --- School-wide Announcements ---
+	// Create announcement (admin or tutor)
+	app.Post("/v1/schools/:id/announcements", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		isTutor, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !isAdmin && !isTutor {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Title      string `json:"title"`
+			Body       string `json:"body"`
+			Visibility string `json:"visibility"`
+			Pinned     *bool  `json:"pinned"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Title) == "" || strings.TrimSpace(body.Body) == "" {
+			return fiber.ErrBadRequest
+		}
+		vis := strings.ToLower(strings.TrimSpace(body.Visibility))
+		if vis == "" {
+			vis = "school"
+		}
+		var id string
+		if err := opts.DB.Get(&id, `INSERT INTO announcements (school_id, author_user_id, title, body, visibility, pinned) VALUES ($1,$2,$3,$4,$5,COALESCE($6,false)) RETURNING id`, sid, uid, body.Title, body.Body, vis, body.Pinned); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// --- School Events ---
+	// Create event (admin or tutor)
+	app.Post("/v1/schools/:id/events", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		isTutor, _ := auth.IsSchoolTutor(opts.DB, sid, uid)
+		if !isAdmin && !isTutor {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Title       string  `json:"title"`
+			Description *string `json:"description"`
+			Location    *string `json:"location"`
+			StartsAt    string  `json:"starts_at"`
+			EndsAt      *string `json:"ends_at"`
+			Visibility  string  `json:"visibility"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Title) == "" || strings.TrimSpace(body.StartsAt) == "" {
+			return fiber.ErrBadRequest
+		}
+		vis := strings.ToLower(strings.TrimSpace(body.Visibility))
+		if vis == "" {
+			vis = "school"
+		}
+		var id string
+		if err := opts.DB.Get(&id, `INSERT INTO events (school_id, created_by_user_id, title, description, location, starts_at, ends_at, visibility) VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7::timestamptz,NULL),$8) RETURNING id`, sid, uid, body.Title, body.Description, body.Location, body.StartsAt, body.EndsAt, vis); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// List school events
+	app.Get("/v1/schools/:id/events", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		from := strings.TrimSpace(c.Query("from"))
+		to := strings.TrimSpace(c.Query("to"))
+		limit := 100
+		if v := c.Query("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+				limit = n
+			}
+		}
+		offset := 0
+		if v := c.Query("offset"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+		where := []string{"school_id=$1"}
+		args := []any{sid}
+		if !isMember {
+			where = append(where, "visibility='public'")
+		}
+		if from != "" {
+			where = append(where, "starts_at::date >= $2")
+			args = append(args, from)
+		}
+		if to != "" {
+			where = append(where, "starts_at::date <= $3")
+			args = append(args, to)
+		}
+		cond := strings.Join(where, " AND ")
+		type E struct {
+			ID, Title, Description, Location, Visibility, CreatedBy string
+			StartsAt                                                *time.Time
+			EndsAt                                                  *time.Time
+		}
+		rows := []E{}
+		q := "SELECT id, title, COALESCE(description,'') AS description, COALESCE(location,'') AS location, visibility, created_by_user_id AS created_by, starts_at, ends_at FROM events WHERE " + cond + " ORDER BY starts_at ASC LIMIT $4 OFFSET $5"
+		args = append(args, limit, offset)
+		if err := opts.DB.Select(&rows, opts.DB.Rebind(q), args...); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Event details (respect visibility)
+	app.Get("/v1/events/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		id := c.Params("id")
+		var row struct {
+			ID, SchoolID, Title, Description, Location, Visibility, CreatedBy string
+			StartsAt                                                          time.Time
+			EndsAt                                                            *time.Time
+		}
+		if err := opts.DB.Get(&row, `SELECT id, school_id, title, COALESCE(description,'') AS description, COALESCE(location,'') AS location, visibility, created_by_user_id AS created_by, starts_at, ends_at FROM events WHERE id=$1`, id); err != nil {
+			return fiber.ErrNotFound
+		}
+		isMember, _ := auth.IsSchoolMember(opts.DB, row.SchoolID, uuid)
+		if row.Visibility != "public" && !isMember {
+			return fiber.ErrForbidden
+		}
+		return c.JSON(fiber.Map{"success": true, "data": row})
+	})
+
+	// RSVP to event
+	app.Post("/v1/events/:id/rsvp", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var e struct{ SchoolID string }
+		if err := opts.DB.Get(&e, `SELECT school_id FROM events WHERE id=$1`, id); err != nil {
+			return fiber.ErrNotFound
+		}
+		isMember, _ := auth.IsSchoolMember(opts.DB, e.SchoolID, uid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		st := strings.ToLower(strings.TrimSpace(body.Status))
+		if st == "" {
+			st = "interested"
+		}
+		if st != "going" && st != "interested" && st != "declined" {
+			return fiber.ErrBadRequest
+		}
+		_, _ = opts.DB.Exec(`INSERT INTO event_attendees (event_id, user_id, status) VALUES ($1,$2,$3) ON CONFLICT (event_id,user_id) DO UPDATE SET status=EXCLUDED.status`, id, uid, st)
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Update or delete event (admin or creator)
+	app.Patch("/v1/events/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var meta struct{ SchoolID, CreatedBy string }
+		if err := opts.DB.Get(&meta, `SELECT school_id, created_by_user_id FROM events WHERE id=$1`, id); err != nil {
+			return fiber.ErrNotFound
+		}
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, meta.SchoolID, uid)
+		if !isAdmin && meta.CreatedBy != uid {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Title       *string `json:"title"`
+			Description *string `json:"description"`
+			Location    *string `json:"location"`
+			StartsAt    *string `json:"starts_at"`
+			EndsAt      *string `json:"ends_at"`
+			Visibility  *string `json:"visibility"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		// build dynamic update
+		sets := []string{}
+		args := []any{}
+		if body.Title != nil {
+			sets = append(sets, "title=$1")
+			args = append(args, *body.Title)
+		}
+		if body.Description != nil {
+			sets = append(sets, "description=$2")
+			args = append(args, *body.Description)
+		}
+		if body.Location != nil {
+			sets = append(sets, "location=$3")
+			args = append(args, *body.Location)
+		}
+		if body.StartsAt != nil {
+			sets = append(sets, "starts_at=$4")
+			args = append(args, *body.StartsAt)
+		}
+		if body.EndsAt != nil {
+			sets = append(sets, "ends_at=$5::timestamptz")
+			args = append(args, *body.EndsAt)
+		}
+		if body.Visibility != nil {
+			sets = append(sets, "visibility=$6")
+			v := strings.ToLower(strings.TrimSpace(*body.Visibility))
+			if v == "" {
+				v = "school"
+			}
+			args = append(args, v)
+		}
+		if len(sets) == 0 {
+			return c.JSON(fiber.Map{"success": true})
+		}
+		// parameter positions need rebinding; simpler: named style
+		_, err = opts.DB.Exec(`UPDATE events SET title=COALESCE($1,title), description=COALESCE($2,description), location=COALESCE($3,location), starts_at=COALESCE($4,starts_at), ends_at=COALESCE($5,ends_at), visibility=COALESCE($6,visibility) WHERE id=$7`, body.Title, body.Description, body.Location, body.StartsAt, body.EndsAt, body.Visibility, id)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	app.Delete("/v1/events/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var meta struct{ SchoolID, CreatedBy string }
+		if err := opts.DB.Get(&meta, `SELECT school_id, created_by_user_id FROM events WHERE id=$1`, id); err != nil {
+			return fiber.ErrNotFound
+		}
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, meta.SchoolID, uid)
+		if !isAdmin && meta.CreatedBy != uid {
+			return fiber.ErrForbidden
+		}
+		_, _ = opts.DB.Exec(`DELETE FROM events WHERE id=$1`, id)
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// List announcements (members can see school + public; non-members see public only)
+	app.Get("/v1/schools/:id/announcements", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		limit := 50
+		if v := strings.TrimSpace(c.Query("limit")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+				limit = n
+			}
+		}
+		offset := 0
+		if v := strings.TrimSpace(c.Query("offset")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+		type A struct {
+			ID, Title, Body, Visibility, Author string
+			Pinned                              bool
+			CreatedAt                           time.Time
+		}
+		rows := []A{}
+		if isMember {
+			_ = opts.DB.Select(&rows, `SELECT a.id, a.title, a.body, a.visibility, a.author_user_id AS author, a.pinned, a.created_at FROM announcements a WHERE a.school_id=$1 ORDER BY a.pinned DESC, a.created_at DESC LIMIT $2 OFFSET $3`, sid, limit, offset)
+		} else {
+			_ = opts.DB.Select(&rows, `SELECT a.id, a.title, a.body, a.visibility, a.author_user_id AS author, a.pinned, a.created_at FROM announcements a WHERE a.school_id=$1 AND a.visibility='public' ORDER BY a.pinned DESC, a.created_at DESC LIMIT $2 OFFSET $3`, sid, limit, offset)
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// My feed across schools (member-only)
+	app.Get("/v1/me/announcements", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		limit := 50
+		if v := strings.TrimSpace(c.Query("limit")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+				limit = n
+			}
+		}
+		offset := 0
+		if v := strings.TrimSpace(c.Query("offset")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+		type A struct {
+			ID, SchoolID, Title, Body, Visibility, Author string
+			Pinned                                        bool
+			CreatedAt                                     time.Time
+		}
+		rows := []A{}
+		_ = opts.DB.Select(&rows, `SELECT a.id, a.school_id, a.title, a.body, a.visibility, a.author_user_id AS author, a.pinned, a.created_at FROM announcements a JOIN school_members m ON m.school_id=a.school_id AND m.user_id=$1 AND m.status='active' ORDER BY a.pinned DESC, a.created_at DESC LIMIT $2 OFFSET $3`, uid, limit, offset)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// --- Notifications: email processor (admin-triggered) ---
+	app.Get("/v1/admin/notifications/pending", func(c *fiber.Ctx) error {
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		if !isPlatformAdmin(uid) {
+			return fiber.ErrForbidden
+		}
+		var n int
+		_ = opts.DB.Get(&n, `SELECT COUNT(*) FROM notifications_queue WHERE status='pending'`)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"pending": n}})
+	})
+
+	app.Post("/v1/admin/notifications/process", func(c *fiber.Ctx) error {
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		if !isPlatformAdmin(uid) {
+			return fiber.ErrForbidden
+		}
+		limit := 50
+		if v := c.Query("limit"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 500 {
+				limit = n
+			}
+		}
+		rows := []struct {
+			ID, Recipient, NType string
+			Payload              []byte
+		}{}
+		if err := opts.DB.Select(&rows, `SELECT id, recipient_user_id AS recipient, ntype, COALESCE(payload,'{}'::jsonb) AS payload FROM notifications_queue WHERE status='pending' ORDER BY created_at ASC LIMIT $1`, limit); err != nil {
+			return fiber.ErrInternalServerError
+		}
+		processed := 0
+		for _, r := range rows {
+			// derive email, subject, body
+			email := ""
+			var pl map[string]any
+			_ = json.Unmarshal(r.Payload, &pl)
+			if v, ok := pl["email"].(string); ok {
+				email = strings.TrimSpace(v)
+			}
+			subject := "Notification"
+			body := "You have a new notification."
+			switch strings.ToLower(r.NType) {
+			case "class_announcement":
+				subject = fmt.Sprintf("Class Announcement: %v", pl["title"])
+				body = fmt.Sprintf("%v", pl["body"])
+			case "school_application_approved":
+				subject = "Your school application was approved"
+				body = "You can now manage your school."
+			case "school_application_rejected":
+				subject = "Your school application was rejected"
+				body = fmt.Sprintf("Reason: %v", pl["reason"])
+			case "tutor_application_approved":
+				subject = "Your tutor application was approved"
+				body = "You can start creating classes."
+			case "tutor_application_rejected":
+				subject = "Your tutor application was rejected"
+				body = fmt.Sprintf("Reason: %v", pl["reason"])
+			case "direct_message":
+				subject = "You received a new message"
+				body = fmt.Sprintf("From: %v\n%v", pl["from"], pl["preview"])
+			case "call_invite":
+				subject = "You have an incoming call"
+				body = fmt.Sprintf("Join link: %v", pl["url"])
+			}
+			if email == "" {
+				email = fmt.Sprintf("%s@placeholder.local", r.Recipient)
+			}
+			if err := sendEmail(email, subject, body); err != nil {
+				_, _ = opts.DB.Exec(`UPDATE notifications_queue SET status='failed', last_error=$1, updated_at=now() WHERE id=$2`, err.Error(), r.ID)
+				continue
+			}
+			if phone, ok := pl["phone"].(string); ok && strings.TrimSpace(phone) != "" {
+				_ = sendSMS(strings.TrimSpace(phone), subject+": "+body)
+			}
+			_, _ = opts.DB.Exec(`UPDATE notifications_queue SET status='sent', updated_at=now() WHERE id=$1`, r.ID)
+			processed++
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"processed": processed}})
+	})
+
 	// Conversation archiving
 	app.Post("/v1/messages/threads/:id/archive", func(c *fiber.Ctx) error {
 		if opts.DB == nil {
@@ -6878,6 +7688,1079 @@ func New(opts Options) *fiber.App {
 		}
 		logAudit(uid, "messages_archive", "thread", id, nil)
 		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- Freemium Features ---
+	// List effective features for current user (optionally for a specific school)
+	app.Get("/v1/features", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := strings.TrimSpace(c.Query("school_id"))
+		features := map[string]bool{}
+		// School-level flags
+		if sid != "" {
+			rows := []struct {
+				Key     string `db:"feature_key"`
+				Enabled bool   `db:"enabled"`
+			}{}
+			_ = opts.DB.Select(&rows, `SELECT feature_key, enabled FROM school_feature_flags WHERE school_id=$1`, sid)
+			for _, r := range rows {
+				features[r.Key] = r.Enabled
+			}
+		}
+		// User overrides
+		rows := []struct {
+			Key     string `db:"feature_key"`
+			Enabled bool   `db:"enabled"`
+		}{}
+		_ = opts.DB.Select(&rows, `SELECT feature_key, enabled FROM user_feature_flags WHERE user_id=$1`, uid)
+		for _, r := range rows {
+			features[r.Key] = r.Enabled
+		}
+		return c.JSON(fiber.Map{"success": true, "data": features})
+	})
+
+	// --- Grading Scales ---
+	// Create grading scale with entries (admin)
+	app.Post("/v1/schools/:id/grading-scales", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name      string `json:"name"`
+			IsDefault bool   `json:"is_default"`
+			Entries   []struct {
+				Min    float64  `json:"min"`
+				Max    float64  `json:"max"`
+				Letter string   `json:"letter"`
+				Points *float64 `json:"points"`
+			} `json:"entries"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" || len(body.Entries) == 0 {
+			return fiber.ErrBadRequest
+		}
+		var scaleID string
+		if err := opts.DB.Get(&scaleID, `INSERT INTO grading_scales (school_id, name, is_default, active) VALUES ($1,$2,$3,TRUE) RETURNING id`, sid, body.Name, body.IsDefault); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		for _, e := range body.Entries {
+			_, _ = opts.DB.Exec(`INSERT INTO grading_scale_entries (scale_id, min_percent, max_percent, letter, points) VALUES ($1,$2,$3,$4,$5)`, scaleID, e.Min, e.Max, e.Letter, e.Points)
+		}
+		if body.IsDefault {
+			_, _ = opts.DB.Exec(`UPDATE grading_scales SET is_default=FALSE WHERE school_id=$1 AND id<>$2`, sid, scaleID)
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": scaleID}})
+	})
+
+	app.Get("/v1/schools/:id/grading-scales", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		sid := c.Params("id")
+		rows := []struct {
+			ID, Name          string
+			IsDefault, Active bool
+		}{}
+		_ = opts.DB.Select(&rows, `SELECT id, name, is_default, active FROM grading_scales WHERE school_id=$1 ORDER BY created_at DESC`, sid)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	app.Patch("/v1/grading-scales/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM grading_scales WHERE id=$1`, id)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name      *string `json:"name"`
+			IsDefault *bool   `json:"is_default"`
+			Active    *bool   `json:"active"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		_, _ = opts.DB.Exec(`UPDATE grading_scales SET name=COALESCE($1,name), is_default=COALESCE($2,is_default), active=COALESCE($3,active), updated_at=now() WHERE id=$4`, body.Name, body.IsDefault, body.Active, id)
+		if body.IsDefault != nil && *body.IsDefault {
+			_, _ = opts.DB.Exec(`UPDATE grading_scales SET is_default=FALSE WHERE school_id=$1 AND id<>$2`, sid, id)
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Set school feature flag (admin)
+	app.Post("/v1/schools/:id/features", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			FeatureKey string `json:"feature_key"`
+			Enabled    *bool  `json:"enabled"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.FeatureKey) == "" || body.Enabled == nil {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO school_feature_flags (school_id, feature_key, enabled) VALUES ($1,$2,$3)
+			ON CONFLICT (school_id, feature_key) DO UPDATE SET enabled=EXCLUDED.enabled`, sid, body.FeatureKey, *body.Enabled)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- Facilities & Booking ---
+	// Create facility (admin)
+	app.Post("/v1/schools/:id/facilities", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name       string         `json:"name"`
+			Location   *string        `json:"location"`
+			Capacity   *int           `json:"capacity"`
+			Attributes map[string]any `json:"attributes"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		var id string
+		aBytes, _ := json.Marshal(body.Attributes)
+		if err := opts.DB.Get(&id, `INSERT INTO facilities (school_id,name,location,capacity,attributes) VALUES ($1,$2,$3,$4,COALESCE($5,'{}'::jsonb)) RETURNING id`, sid, body.Name, body.Location, body.Capacity, nullIfEmptyJSON(aBytes)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// List facilities (admin or member)
+	app.Get("/v1/schools/:id/facilities", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		rows := []struct {
+			ID, Name, Location string
+			Capacity           *int
+			Active             bool
+		}{}
+		_ = opts.DB.Select(&rows, `SELECT id, name, COALESCE(location,'') AS location, capacity, active FROM facilities WHERE school_id=$1 AND active=true ORDER BY name`, sid)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Update facility (admin)
+	app.Patch("/v1/facilities/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM facilities WHERE id=$1`, id)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name     *string `json:"name"`
+			Location *string `json:"location"`
+			Capacity *int    `json:"capacity"`
+			Active   *bool   `json:"active"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`UPDATE facilities SET name=COALESCE($1,name), location=COALESCE($2,location), capacity=COALESCE($3,capacity), active=COALESCE($4,active), updated_at=now() WHERE id=$5`, body.Name, body.Location, body.Capacity, body.Active, id)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Facility availability (booked slots)
+	app.Get("/v1/facilities/:id/availability", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		id := c.Params("id")
+		from := strings.TrimSpace(c.Query("from"))
+		to := strings.TrimSpace(c.Query("to"))
+		rows := []struct {
+			StartsAt time.Time `db:"starts_at" json:"starts_at"`
+			EndsAt   time.Time `db:"ends_at" json:"ends_at"`
+		}{}
+		q := `SELECT starts_at, ends_at FROM facility_bookings WHERE facility_id=$1 AND status='booked'`
+		args := []any{id}
+		if from != "" {
+			q += " AND starts_at >= $2"
+			args = append(args, from)
+		}
+		if to != "" {
+			if len(args) == 1 {
+				q += " AND ends_at <= $2"
+			} else {
+				q += " AND ends_at <= $3"
+			}
+			args = append(args, to)
+		}
+		_ = opts.DB.Select(&rows, q, args...)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Book a facility (member)
+	app.Post("/v1/facilities/:id/book", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM facilities WHERE id=$1 AND active=true`, id)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Title       string  `json:"title"`
+			Description *string `json:"description"`
+			StartsAt    string  `json:"starts_at"`
+			EndsAt      string  `json:"ends_at"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StartsAt) == "" || strings.TrimSpace(body.EndsAt) == "" {
+			return fiber.ErrBadRequest
+		}
+		// conflict check
+		var conflict bool
+		_ = opts.DB.Get(&conflict, `SELECT EXISTS (SELECT 1 FROM facility_bookings WHERE facility_id=$1 AND status='booked' AND NOT (ends_at <= $2 OR starts_at >= $3))`, id, body.StartsAt, body.EndsAt)
+		if conflict {
+			return c.Status(409).JSON(fiber.Map{"success": false, "message": "time slot not available"})
+		}
+		var bid string
+		if err := opts.DB.Get(&bid, `INSERT INTO facility_bookings (facility_id, user_id, title, description, starts_at, ends_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, id, uid, body.Title, body.Description, body.StartsAt, body.EndsAt); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": bid}})
+	})
+
+	// My bookings
+	app.Get("/v1/me/bookings", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := strings.TrimSpace(c.Query("school_id"))
+		rows := []struct {
+			ID, FacilityID, Title string
+			StartsAt, EndsAt      time.Time
+			Status                string
+		}{}
+		if sid == "" {
+			_ = opts.DB.Select(&rows, `SELECT id, facility_id, COALESCE(title,'') AS title, starts_at, ends_at, status FROM facility_bookings WHERE user_id=$1 ORDER BY starts_at DESC`, uid)
+		} else {
+			_ = opts.DB.Select(&rows, `SELECT b.id, b.facility_id, COALESCE(b.title,'') AS title, b.starts_at, b.ends_at, b.status FROM facility_bookings b JOIN facilities f ON f.id=b.facility_id WHERE b.user_id=$1 AND f.school_id=$2 ORDER BY b.starts_at DESC`, uid, sid)
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Cancel booking (booker or admin)
+	app.Delete("/v1/bookings/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var meta struct{ FacilityID, UserID, SchoolID string }
+		_ = opts.DB.Get(&meta, `SELECT b.facility_id, b.user_id, f.school_id FROM facility_bookings b JOIN facilities f ON f.id=b.facility_id WHERE b.id=$1`, id)
+		if meta.FacilityID == "" {
+			return fiber.ErrNotFound
+		}
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, meta.SchoolID, uid)
+		if uid != meta.UserID && !isAdmin {
+			return fiber.ErrForbidden
+		}
+		_, _ = opts.DB.Exec(`UPDATE facility_bookings SET status='canceled', updated_at=now() WHERE id=$1`, id)
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- Library Management ---
+	// Create book (admin)
+	app.Post("/v1/schools/:id/library/books", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			ISBN, Title, Author, Subject, Description, CoverURL *string
+			Tags                                                map[string]any
+		}
+		if err := c.BodyParser(&body); err != nil || body.Title == nil || strings.TrimSpace(*body.Title) == "" {
+			return fiber.ErrBadRequest
+		}
+		var id string
+		tb, _ := json.Marshal(body.Tags)
+		if err := opts.DB.Get(&id, `INSERT INTO library_books (school_id, isbn, title, author, subject, tags, description, cover_url) VALUES ($1,$2,$3,$4,$5,COALESCE($6,'{}'::jsonb),$7,$8) RETURNING id`, sid, body.ISBN, body.Title, body.Author, body.Subject, nullIfEmptyJSON(tb), body.Description, body.CoverURL); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// Search/list books (members)
+	app.Get("/v1/schools/:id/library/books", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		q := strings.TrimSpace(c.Query("q"))
+		limit := 50
+		if v := c.Query("limit"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 200 {
+				limit = n
+			}
+		}
+		offset := 0
+		if v := c.Query("offset"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+				offset = n
+			}
+		}
+		rows := []struct {
+			ID, Title, Author, Subject string
+			CoverURL                   *string
+		}{}
+		if q == "" {
+			_ = opts.DB.Select(&rows, `SELECT id, title, COALESCE(author,'') AS author, COALESCE(subject,'') AS subject, cover_url FROM library_books WHERE school_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, sid, limit, offset)
+		} else {
+			_ = opts.DB.Select(&rows, `SELECT id, title, COALESCE(author,'') AS author, COALESCE(subject,'') AS subject, cover_url FROM library_books WHERE school_id=$1 AND to_tsvector('english', coalesce(title,'') || ' ' || coalesce(author,'')) @@ plainto_tsquery('english', $2) ORDER BY created_at DESC LIMIT $3 OFFSET $4`, sid, q, limit, offset)
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Manage copies (admin create, list)
+	app.Post("/v1/library/books/:id/copies", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		bid := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM library_books WHERE id=$1`, bid)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct{ Barcode *string }
+		_ = c.BodyParser(&body)
+		var id string
+		if err := opts.DB.Get(&id, `INSERT INTO library_copies (book_id, barcode) VALUES ($1, NULLIF($2,'')) RETURNING id`, bid, coalesceString(body.Barcode)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+	app.Get("/v1/library/books/:id/copies", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		bid := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM library_books WHERE id=$1`, bid)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		rows := []struct{ ID, Status, Barcode string }{}
+		_ = opts.DB.Select(&rows, `SELECT id, status, COALESCE(barcode,'') AS barcode FROM library_copies WHERE book_id=$1 ORDER BY status`, bid)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Loans
+	app.Post("/v1/library/copies/:id/loan", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		// Ensure copy belongs to a school where user is member and is available
+		var row struct{ SchoolID, Status string }
+		_ = opts.DB.Get(&row, `SELECT b.school_id, c.status FROM library_copies c JOIN library_books b ON b.id=c.book_id WHERE c.id=$1`, cid)
+		if row.SchoolID == "" {
+			return fiber.ErrNotFound
+		}
+		isMember, _ := auth.IsSchoolMember(opts.DB, row.SchoolID, uid)
+		if !isMember || strings.ToLower(row.Status) != "available" {
+			return fiber.ErrForbidden
+		}
+		// Create loan (14-day default)
+		due := time.Now().Add(14 * 24 * time.Hour)
+		var lid string
+		if err := opts.DB.Get(&lid, `INSERT INTO library_loans (copy_id, user_id, status, due_at) VALUES ($1,$2,'active',$3) RETURNING id`, cid, uid, due); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		_, _ = opts.DB.Exec(`UPDATE library_copies SET status='loaned' WHERE id=$1`, cid)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": lid, "due_at": due.UTC().Format(time.RFC3339)}})
+	})
+
+	app.Post("/v1/library/loans/:id/return", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		lid := c.Params("id")
+		var meta struct{ CopyID, UserID string }
+		_ = opts.DB.Get(&meta, `SELECT copy_id, user_id FROM library_loans WHERE id=$1 AND status='active'`, lid)
+		if meta.CopyID == "" {
+			return fiber.ErrNotFound
+		}
+		// Allow returning by borrower or school admin
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT b.school_id FROM library_copies c JOIN library_books b ON b.id=c.book_id WHERE c.id=$1`, meta.CopyID)
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if uid != meta.UserID && !isAdmin {
+			return fiber.ErrForbidden
+		}
+		_, _ = opts.DB.Exec(`UPDATE library_loans SET status='returned', returned_at=now() WHERE id=$1`, lid)
+		_, _ = opts.DB.Exec(`UPDATE library_copies SET status='available' WHERE id=$1`, meta.CopyID)
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	app.Get("/v1/me/library/loans", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		status := strings.ToLower(strings.TrimSpace(c.Query("status")))
+		rows := []struct {
+			ID, CopyID, Status string
+			LoanedAt, DueAt    time.Time
+			ReturnedAt         *time.Time
+		}{}
+		if status == "" || status == "active" {
+			_ = opts.DB.Select(&rows, `SELECT id, copy_id, status, loaned_at, due_at, returned_at FROM library_loans WHERE user_id=$1 AND status<>'returned' ORDER BY loaned_at DESC`, uid)
+		} else {
+			_ = opts.DB.Select(&rows, `SELECT id, copy_id, status, loaned_at, due_at, returned_at FROM library_loans WHERE user_id=$1 ORDER BY loaned_at DESC`, uid)
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// --- Inventory Tracking ---
+	// Create inventory item (admin)
+	app.Post("/v1/schools/:id/inventory/items", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			SKU, Name, Category *string
+			Attributes          map[string]any
+		}
+		if err := c.BodyParser(&body); err != nil || body.Name == nil || strings.TrimSpace(*body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		var id string
+		ab, _ := json.Marshal(body.Attributes)
+		if err := opts.DB.Get(&id, `INSERT INTO inventory_items (school_id, sku, name, category, attributes) VALUES ($1,$2,$3,$4,COALESCE($5,'{}'::jsonb)) RETURNING id`, sid, body.SKU, body.Name, body.Category, nullIfEmptyJSON(ab)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": id}})
+	})
+
+	// List inventory items (members) with computed stock
+	app.Get("/v1/schools/:id/inventory/items", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		q := strings.TrimSpace(c.Query("q"))
+		rows := []struct{ ID, Name, Category string }{}
+		if q == "" {
+			_ = opts.DB.Select(&rows, `SELECT id, name, COALESCE(category,'') AS category FROM inventory_items WHERE school_id=$1 ORDER BY created_at DESC`, sid)
+		} else {
+			_ = opts.DB.Select(&rows, `SELECT id, name, COALESCE(category,'') AS category FROM inventory_items WHERE school_id=$1 AND to_tsvector('english', coalesce(name,'') || ' ' || coalesce(category,'')) @@ plainto_tsquery('english',$2) ORDER BY created_at DESC`, sid, q)
+		}
+		out := []fiber.Map{}
+		for _, r := range rows {
+			var stock int
+			_ = opts.DB.Get(&stock, `SELECT COALESCE(SUM(change),0) FROM inventory_movements WHERE item_id=$1`, r.ID)
+			out = append(out, fiber.Map{"id": r.ID, "name": r.Name, "category": r.Category, "stock": stock})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": out})
+	})
+
+	// --- Hostel / Boarding ---
+	// Create hostel (admin)
+	app.Post("/v1/schools/:id/hostels", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name     string  `json:"name"`
+			Location *string `json:"location"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		var hid string
+		if err := opts.DB.Get(&hid, `INSERT INTO hostels (school_id, name, location) VALUES ($1,$2,$3) RETURNING id`, sid, body.Name, body.Location); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": hid}})
+	})
+
+	// Add room (admin)
+	app.Post("/v1/hostels/:id/rooms", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		hid := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM hostels WHERE id=$1`, hid)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			RoomNo   string  `json:"room_no"`
+			Capacity *int    `json:"capacity"`
+			Gender   *string `json:"gender"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.RoomNo) == "" {
+			return fiber.ErrBadRequest
+		}
+		var rid string
+		if err := opts.DB.Get(&rid, `INSERT INTO hostel_rooms (hostel_id, room_no, capacity, gender) VALUES ($1,$2,COALESCE($3,1),$4) RETURNING id`, hid, body.RoomNo, body.Capacity, body.Gender); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": rid}})
+	})
+
+	// List hostels with occupancy summary (members)
+	app.Get("/v1/schools/:id/hostels", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		hostels := []struct{ ID, Name, Location string }{}
+		_ = opts.DB.Select(&hostels, `SELECT id, name, COALESCE(location,'') AS location FROM hostels WHERE school_id=$1 ORDER BY name`, sid)
+		out := []fiber.Map{}
+		for _, h := range hostels {
+			var rooms int
+			var beds int
+			var occupied int
+			_ = opts.DB.Get(&rooms, `SELECT COUNT(*) FROM hostel_rooms WHERE hostel_id=$1`, h.ID)
+			_ = opts.DB.Get(&beds, `SELECT COALESCE(SUM(capacity),0) FROM hostel_rooms WHERE hostel_id=$1`, h.ID)
+			_ = opts.DB.Get(&occupied, `SELECT COALESCE(SUM(1),0) FROM hostel_allocations a JOIN hostel_rooms r ON r.id=a.room_id WHERE r.hostel_id=$1 AND a.status='active'`, h.ID)
+			out = append(out, fiber.Map{"id": h.ID, "name": h.Name, "location": h.Location, "rooms": rooms, "beds": beds, "occupied": occupied})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": out})
+	})
+
+	// Allocate student to a room (admin)
+	app.Post("/v1/rooms/:id/allocate", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rid := c.Params("id")
+		var meta struct {
+			HostelID, SchoolID string
+			Capacity           int
+		}
+		_ = opts.DB.Get(&meta, `SELECT r.hostel_id, h.school_id, r.capacity FROM hostel_rooms r JOIN hostels h ON h.id=r.hostel_id WHERE r.id=$1`, rid)
+		if meta.SchoolID == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, meta.SchoolID, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			StudentUserID string `json:"student_user_id"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StudentUserID) == "" {
+			return fiber.ErrBadRequest
+		}
+		// Capacity check
+		var occ int
+		_ = opts.DB.Get(&occ, `SELECT COUNT(*) FROM hostel_allocations WHERE room_id=$1 AND status='active'`, rid)
+		if occ >= meta.Capacity {
+			return c.Status(409).JSON(fiber.Map{"success": false, "message": "room full"})
+		}
+		_, err = opts.DB.Exec(`INSERT INTO hostel_allocations (room_id, student_user_id) VALUES ($1,$2)`, rid, body.StudentUserID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Checkout (student or admin)
+	app.Post("/v1/allocations/:id/checkout", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		aid := c.Params("id")
+		var meta struct{ RoomID, Student string }
+		_ = opts.DB.Get(&meta, `SELECT room_id, student_user_id FROM hostel_allocations WHERE id=$1 AND status='active'`, aid)
+		if meta.RoomID == "" {
+			return fiber.ErrNotFound
+		}
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT h.school_id FROM hostel_rooms r JOIN hostels h ON h.id=r.hostel_id WHERE r.id=$1`, meta.RoomID)
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if uid != meta.Student && !isAdmin {
+			return fiber.ErrForbidden
+		}
+		_, _ = opts.DB.Exec(`UPDATE hostel_allocations SET status='checked_out', end_date=CURRENT_DATE WHERE id=$1`, aid)
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// My hostel allocation
+	app.Get("/v1/me/hostel", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		row := struct{ AllocationID, RoomID, HostelID, SchoolID, RoomNo, HostelName string }{}
+		_ = opts.DB.Get(&row, `SELECT a.id AS allocation_id, r.id AS room_id, h.id AS hostel_id, h.school_id AS school_id, r.room_no, h.name AS hostel_name
+			FROM hostel_allocations a JOIN hostel_rooms r ON r.id=a.room_id JOIN hostels h ON h.id=r.hostel_id WHERE a.student_user_id=$1 AND a.status='active' LIMIT 1`, uid)
+		if row.AllocationID == "" {
+			return c.JSON(fiber.Map{"success": true, "data": nil})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": row})
+	})
+
+	// --- Transportation ---
+	// Create route (admin)
+	app.Post("/v1/schools/:id/transport/routes", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name string `json:"name"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		var rid string
+		if err := opts.DB.Get(&rid, `INSERT INTO transport_routes (school_id, name) VALUES ($1,$2) RETURNING id`, sid, body.Name); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": rid}})
+	})
+
+	// List routes with stops (members)
+	app.Get("/v1/schools/:id/transport/routes", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		sid := c.Params("id")
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		routes := []struct{ ID, Name string }{}
+		_ = opts.DB.Select(&routes, `SELECT id, name FROM transport_routes WHERE school_id=$1 ORDER BY name`, sid)
+		out := []fiber.Map{}
+		for _, r := range routes {
+			stops := []struct {
+				ID, Name string
+				Lat, Lng *float64
+				Order    int
+			}{}
+			_ = opts.DB.Select(&stops, `SELECT id, name, lat::float8 AS lat, lng::float8 AS lng, order_index AS "order" FROM transport_stops WHERE route_id=$1 ORDER BY order_index`, r.ID)
+			out = append(out, fiber.Map{"id": r.ID, "name": r.Name, "stops": stops})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": out})
+	})
+
+	// Add stop (admin)
+	app.Post("/v1/transport/routes/:id/stops", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rid := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM transport_routes WHERE id=$1`, rid)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Name       string   `json:"name"`
+			Lat        *float64 `json:"lat"`
+			Lng        *float64 `json:"lng"`
+			OrderIndex *int     `json:"order_index"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO transport_stops (route_id, name, lat, lng, order_index) VALUES ($1,$2,$3,$4,COALESCE($5,0))`, rid, body.Name, body.Lat, body.Lng, body.OrderIndex)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Assign student to route/stop (admin)
+	app.Post("/v1/transport/routes/:id/assign", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rid := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM transport_routes WHERE id=$1`, rid)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			StudentUserID string `json:"student_user_id"`
+			StopID        string `json:"stop_id"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StudentUserID) == "" || strings.TrimSpace(body.StopID) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO transport_assignments (route_id, stop_id, student_user_id) VALUES ($1,$2,$3) ON CONFLICT (route_id, student_user_id, status) WHERE status='active' DO NOTHING`, rid, body.StopID, body.StudentUserID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// My transport assignments (student)
+	app.Get("/v1/me/transport/assignments", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rows := []struct{ RouteID, StopID, RouteName, StopName string }{}
+		_ = opts.DB.Select(&rows, `SELECT a.route_id, a.stop_id, r.name AS route_name, s.name AS stop_name FROM transport_assignments a JOIN transport_routes r ON r.id=a.route_id JOIN transport_stops s ON s.id=a.stop_id WHERE a.student_user_id=$1 AND a.status='active'`, uid)
+		out := []fiber.Map{}
+		for _, r := range rows {
+			out = append(out, fiber.Map{"route_id": r.RouteID, "route_name": r.RouteName, "stop_id": r.StopID, "stop_name": r.StopName})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": out})
+	})
+
+	// Schedule trip (admin)
+	app.Post("/v1/transport/routes/:id/trips", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rid := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM transport_routes WHERE id=$1`, rid)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			StartTime string `json:"start_time"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.StartTime) == "" {
+			return fiber.ErrBadRequest
+		}
+		var tid string
+		if err := opts.DB.Get(&tid, `INSERT INTO transport_trips (route_id, start_time) VALUES ($1,$2) RETURNING id`, rid, body.StartTime); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"id": tid}})
+	})
+
+	// Trip manifest (admin)
+	app.Get("/v1/transport/trips/:id/manifest", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		tid := c.Params("id")
+		var rid, sid string
+		_ = opts.DB.Get(&rid, `SELECT route_id FROM transport_trips WHERE id=$1`, tid)
+		if rid == "" {
+			return fiber.ErrNotFound
+		}
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM transport_routes WHERE id=$1`, rid)
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !isAdmin {
+			return fiber.ErrForbidden
+		}
+		rows := []struct{ Student, StopName string }{}
+		_ = opts.DB.Select(&rows, `SELECT a.student_user_id AS student, s.name AS stop_name FROM transport_assignments a JOIN transport_stops s ON s.id=a.stop_id WHERE a.route_id=$1 AND a.status='active' ORDER BY s.order_index`, rid)
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+
+	// Check-in (admin)
+	app.Post("/v1/transport/trips/:id/checkin", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		tid := c.Params("id")
+		var rid, sid string
+		_ = opts.DB.Get(&rid, `SELECT route_id FROM transport_trips WHERE id=$1`, tid)
+		if rid == "" {
+			return fiber.ErrNotFound
+		}
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM transport_routes WHERE id=$1`, rid)
+		isAdmin, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !isAdmin {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			StudentUserID string `json:"student_user_id"`
+			Event         string `json:"event"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.ErrBadRequest
+		}
+		ev := strings.ToLower(strings.TrimSpace(body.Event))
+		if ev != "pickup" && ev != "dropoff" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO transport_checkins (trip_id, student_user_id, event) VALUES ($1,$2,$3)`, tid, body.StudentUserID, ev)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Adjust stock (admin): change can be positive (receive) or negative (consume)
+	app.Post("/v1/inventory/items/:id/movements", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		id := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM inventory_items WHERE id=$1`, id)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		ok, _ := auth.IsSchoolAdmin(opts.DB, sid, uid)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		var body struct {
+			Change   int     `json:"change"`
+			Reason   *string `json:"reason"`
+			Location *string `json:"location"`
+		}
+		if err := c.BodyParser(&body); err != nil || body.Change == 0 {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO inventory_movements (item_id, location, change, reason, user_id) VALUES ($1,$2,$3,$4,$5)`, id, body.Location, body.Change, body.Reason, uid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Stock by location
+	app.Get("/v1/inventory/items/:id/stock", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uuid, _ := getUserID(c)
+		id := c.Params("id")
+		var sid string
+		_ = opts.DB.Get(&sid, `SELECT school_id FROM inventory_items WHERE id=$1`, id)
+		if sid == "" {
+			return fiber.ErrNotFound
+		}
+		isMember, _ := auth.IsSchoolMember(opts.DB, sid, uuid)
+		if !isMember {
+			return fiber.ErrForbidden
+		}
+		rows := []struct {
+			Location *string
+			Stock    int
+		}{}
+		_ = opts.DB.Select(&rows, `SELECT NULLIF(location,'') AS location, COALESCE(SUM(change),0) AS stock FROM inventory_movements WHERE item_id=$1 GROUP BY location`, id)
+		out := []fiber.Map{}
+		for _, r := range rows {
+			out = append(out, fiber.Map{"location": r.Location, "stock": r.Stock})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": out})
 	})
 
 	// --- Study Groups ---
@@ -7982,6 +9865,32 @@ func New(opts Options) *fiber.App {
 		u := strings.TrimSpace(r.URL)
 		redir := fmt.Sprintf("/v1/sso/redirect?to=%s", url.QueryEscape(u))
 		return c.Redirect(redir, http.StatusFound)
+	})
+
+	// Resource history: return editor history URL (link-out) and open URL
+	app.Get("/v1/resources/:id/history", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		if _, err := getUserID(c); err != nil {
+			return fiber.ErrUnauthorized
+		}
+		rid := c.Params("id")
+		var r struct{ Type, URL string }
+		if err := opts.DB.Get(&r, `SELECT type, url FROM resources WHERE id=$1`, rid); err != nil {
+			return fiber.ErrNotFound
+		}
+		u := strings.TrimSpace(r.URL)
+		openURL := fmt.Sprintf("/v1/sso/redirect?to=%s", url.QueryEscape(u))
+		// Heuristic: most editors support a history view. Prefer query param; fallback to anchor.
+		historyRaw := u
+		if strings.Contains(u, "?") {
+			historyRaw = u + "&history=1"
+		} else {
+			historyRaw = u + "?history=1"
+		}
+		historyURL := fmt.Sprintf("/v1/sso/redirect?to=%s", url.QueryEscape(historyRaw))
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"open_url": openURL, "history_url": historyURL}})
 	})
 
 	// Minimal SSO redirect: verifies Core API session and forwards to same-root editor URL

@@ -26,7 +26,20 @@ func main() {
 		}
 	}
 
-	app := server.New(server.Options{AllowedOrigins: cfg.AllowedOrigins, DB: conn, CoreAPIBase: cfg.CoreAPIBase})
+	app := server.New(server.Options{
+		AllowedOrigins:   cfg.AllowedOrigins,
+		DB:               conn,
+		CoreAPIBase:      cfg.CoreAPIBase,
+		SMTPHost:         cfg.SMTPHost,
+		SMTPPort:         cfg.SMTPPort,
+		SMTPUsername:     cfg.SMTPUsername,
+		SMTPPassword:     cfg.SMTPPassword,
+		SMTPFrom:         cfg.SMTPFrom,
+		SMSProvider:      cfg.SMSProvider,
+		TwilioAccountSID: cfg.TwilioAccountSID,
+		TwilioAuthToken:  cfg.TwilioAuthToken,
+		TwilioFrom:       cfg.TwilioFrom,
+	})
 	addr := ":" + cfg.Port
 	log.Printf("starting %s on %s (env=%s)", cfg.AppName, addr, cfg.Env)
 	if err := app.Listen(addr); err != nil {

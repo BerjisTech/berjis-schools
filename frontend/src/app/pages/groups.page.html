@@ -14,7 +14,10 @@
       <h3 class="text-sm font-semibold">Members</h3>
       <ul class="text-sm space-y-1">
         <li *ngFor="let m of members()" class="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2">
-          <div>{{ m.userID || m.userId }} · <span class="text-slate-500">{{ m.role }}/{{ m.status }}</span></div>
+          <div class="flex items-center gap-2">
+            <span>{{ m.userID || m.userId }}</span>
+            <span class="status-badge" [ngClass]="{ 'success': (m.status||'')!=='banned', 'danger': (m.status||'')==='banned' }">{{ (m.role || 'member') }}/{{ m.status || 'active' }}</span>
+          </div>
           <div class="flex items-center gap-2">
             <button class="px-2 py-1 rounded border" (click)="setRole(m.userID || m.userId, 'moderator')">Make Mod</button>
             <button class="px-2 py-1 rounded border" (click)="setRole(m.userID || m.userId, 'member')">Make Member</button>
