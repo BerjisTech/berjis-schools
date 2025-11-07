@@ -11,7 +11,7 @@
       <div>Status: <span class="status-badge" [ngClass]="{ 'success': (r.status||'').toLowerCase()==='valid', 'warning': (r.status||'').toLowerCase()==='expired', 'danger': (r.status||'').toLowerCase()==='revoked' }">{{ r.status }}</span></div>
       <div>Template: {{ r.template }}</div>
       <div>Recipient: {{ r.recipient?.name }} ({{ r.recipient?.userId }})</div>
-      <div>Issued: {{ r.issuedAt | date:'mediumDate' }}</div>
+      <div>Issued: {{ r.issuedAt | dateL }}</div>
       <div class="pt-2">
         <a class="text-blue-600 underline" [href]="(r.id && '/v1/certificates/' + r.id + '.pdf?code=' + code())">View PDF</a>
       </div>

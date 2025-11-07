@@ -12,4 +12,24 @@ export class AiService {
     const j = await res.json();
     return j;
   }
+  async summarize(text: string) {
+    const res = await fetch(`${this.api}/v1/ai/summarize`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, lang: (localStorage.getItem('lang') || 'en') }) });
+    return res.json();
+  }
+  async translate(text: string, target: string) {
+    const res = await fetch(`${this.api}/v1/ai/translate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, target, lang: (localStorage.getItem('lang') || 'en') }) });
+    return res.json();
+  }
+  async practice(text: string) {
+    const res = await fetch(`${this.api}/v1/ai/practice`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, lang: (localStorage.getItem('lang') || 'en') }) });
+    return res.json();
+  }
+  async learningPath(context: string) {
+    const res = await fetch(`${this.api}/v1/ai/path`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: context, lang: (localStorage.getItem('lang') || 'en') }) });
+    return res.json();
+  }
+  async studyMaterials(text: string, level: string = 'general') {
+    const res = await fetch(`${this.api}/v1/ai/study-materials`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, level }) });
+    return res.json();
+  }
 }

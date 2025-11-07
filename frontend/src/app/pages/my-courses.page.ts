@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SchoolsService } from '../services/schools.service';
 import { Course } from '../interfaces/course';
+import { LCurrencyPipe } from '../pipes/currency-l.pipe';
 
 interface CourseMetrics {
   subjectCount: number;
@@ -14,7 +15,7 @@ interface CourseMetrics {
 @Component({
   selector: 'app-my-courses-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, LCurrencyPipe],
   templateUrl: './my-courses.page.html'
 })
 export class MyCoursesPage implements OnInit {

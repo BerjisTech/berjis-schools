@@ -19,7 +19,7 @@
       <form class="space-y-2 border rounded p-3" (submit)="$event.preventDefault(); createSection()">
         <div class="text-sm font-medium">Create section</div>
         <input class="border rounded px-3 py-2 w-full" placeholder="Section name" [(ngModel)]="newSection.name" name="name" />
-        <input class="border rounded px-3 py-2 w-full" placeholder="Grade level (optional)" [(ngModel)]="newSection.gradeLevel" name="grade" />
+        <input class="border rounded px-3 py-2 w-full" [placeholder]="('grade_level' | term) + ' (optional)'" [(ngModel)]="newSection.gradeLevel" name="grade" />
         <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy">Add section</button>
       </form>
     </div>

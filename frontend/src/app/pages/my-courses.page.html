@@ -46,7 +46,7 @@
           <span class="px-2 py-1 rounded-full text-xs font-medium"
             [class.bg-emerald-50]="!course.isPaid" [class.text-emerald-700]="!course.isPaid"
             [class.bg-indigo-50]="course.isPaid" [class.text-indigo-700]="course.isPaid">
-            {{ course.isPaid ? ('KES ' + ((course.priceCents ?? 0) / 100 | number:'1.0-0')) : 'Free' }}
+            {{ course.isPaid ? ((course.priceCents ?? 0) | lcurrency:'KES') : 'Free' }}
           </span>
         </div>
         <div class="grid grid-cols-3 gap-3 text-xs">

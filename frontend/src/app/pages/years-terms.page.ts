@@ -15,13 +15,13 @@ export class YearsTermsPage implements OnInit {
   years = signal<any[]>([]);
   terms = signal<any[]>([]);
   // new year
-  yn = { name: '', startDate: '', endDate: '' };
+  yn = { name: '', startDate: '', endDate: '', structure: 'custom' as 'semester'|'trimester'|'quarter'|'custom' };
   // new term
   tn = { name: '', startDate: '', endDate: '' };
   selectedYear = signal<string>('');
   busy = false;
   editYearId = signal<string>('');
-  editYear = { name: '', status: '', startDate: '', endDate: '' };
+  editYear = { name: '', status: '', structure: 'custom', startDate: '', endDate: '' } as { name: string; status: string; structure: 'semester'|'trimester'|'quarter'|'custom'; startDate: string; endDate: string };
   editTermId = signal<string>('');
   editTerm = { name: '', startDate: '', endDate: '' };
 
@@ -48,8 +48,8 @@ export class YearsTermsPage implements OnInit {
     if (!sid || !this.yn.name.trim()) return;
     this.busy = true;
     try {
-      await this.svc.createYear(sid, { name: this.yn.name.trim(), startDate: this.yn.startDate || undefined, endDate: this.yn.endDate || undefined });
-      this.yn = { name: '', startDate: '', endDate: '' };
+      await this.svc.createYear(sid, { name: this.yn.name.trim(), startDate: this.yn.startDate || undefined, endDate: this.yn.endDate || undefined, structure: this.yn.structure });
+      this.yn = { name: '', startDate: '', endDate: '', structure: 'custom' };
       await this.loadYears();
     } finally { this.busy = false; }
   }
@@ -74,17 +74,25 @@ export class YearsTermsPage implements OnInit {
 
   startEditYear(y: any) {
     this.editYearId.set(y.id);
-    this.editYear = { name: y.name, status: y.status || '', startDate: y.startDate || '', endDate: y.endDate || '' };
+    this.editYear = { name: y.name, status: y.status || '', structure: (y.structure || 'custom'), startDate: y.startDate || '', endDate: y.endDate || '' };
   }
   async saveYear() {
     const id = this.editYearId(); if (!id) return;
     this.busy = true; try {
-      await this.svc.updateYear(id, { name: this.editYear.name, status: this.editYear.status || undefined, startDate: this.editYear.startDate || undefined, endDate: this.editYear.endDate || undefined });
+      await this.svc.updateYear(id, { name: this.editYear.name, status: this.editYear.status || undefined, structure: this.editYear.structure, startDate: this.editYear.startDate || undefined, endDate: this.editYear.endDate || undefined });
       await this.loadYears();
       this.editYearId.set('');
     } finally { this.busy = false; }
   }
   cancelYearEdit() { this.editYearId.set(''); }
+
+  async generate(struct: 'semester'|'trimester'|'quarter') {
+    const y = this.selectedYear(); if (!y) return;
+    this.busy = true; try {
+      await this.svc.generateTerms(y, struct);
+      await this.openYear(y);
+    } finally { this.busy = false; }
+  }
 
   startEditTerm(t: any) {
     this.editTermId.set(t.id);

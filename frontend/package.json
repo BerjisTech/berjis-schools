@@ -6,7 +6,11 @@
     "start": "ng serve --host 0.0.0.0 --port 5000",
     "build": "ng build",
     "lint": "ng lint",
-    "test:a11y": "ng build && pwsh -NoProfile -Command \"$p=(Resolve-Path 'dist/schools/browser/index.html'); $u='file:///'+$p.Path.Replace('\\','/'); ./node_modules/.bin/axe $u --timeout 30000 --tags wcag2a,wcag2aa,section508\""
+    "test:a11y": "ng build && pwsh -NoProfile -Command \"$p=(Resolve-Path 'dist/schools/browser/index.html'); $u='file:///'+$p.Path.Replace('\\','/'); ./node_modules/.bin/axe $u --timeout 30000 --tags wcag2a,wcag2aa,section508\"",
+    "test:a11y:ci": "ng build && node -e \"const p=require('path'); const u='file://'+p.resolve('dist/schools/browser/index.html').replace(/\\\\/g,'/'); console.log(u); const {spawnSync}=require('child_process'); process.exit(spawnSync('./node_modules/.bin/axe',[u,'--timeout','30000','--tags','wcag2a,wcag2aa,section508'],{stdio:'inherit',shell:false}).status||0)\"",
+    "serve:dist": "serve -s dist/schools/browser -l 5100",
+    "test:a11y:crawl": "ng build && pwsh -NoProfile -Command \"$p=Start-Process -FilePath node -ArgumentList '.\\node_modules\\serve\\build\\main.js','-s','dist/schools/browser','-l','5100' -PassThru; Start-Sleep -Seconds 2; ./node_modules/.bin/axe http://localhost:5100 http://localhost:5100/classes http://localhost:5100/lessons --timeout 30000 --tags wcag2a,wcag2aa,section508; Stop-Process -Id $p.Id\"",
+    "test:a11y:crawl:ci": "ng build && (./node_modules/.bin/serve -s dist/schools/browser -l 5100 & pid=$!; ./node_modules/.bin/wait-on http://localhost:5100 && ./node_modules/.bin/axe http://localhost:5100 http://localhost:5100/classes http://localhost:5100/lessons --timeout 30000 --tags wcag2a,wcag2aa,section508; kill $pid)"
   },
   "dependencies": {
     "@angular/animations": "^18.0.0",
@@ -33,6 +37,8 @@
     "eslint": "^9.15.0",
     "typescript": "~5.4.0",
     "typescript-eslint": "8.16.0",
-    "@axe-core/cli": "^4.8.3"
+    "@axe-core/cli": "^4.8.3",
+    "serve": "^14.2.3",
+    "wait-on": "^8.0.1"
   }
 }

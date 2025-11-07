@@ -10,6 +10,11 @@ export class I18nService {
   async setLang(lang: string) {
     this.langSig.set(lang);
     localStorage.setItem('lang', lang);
+    // Apply text direction based on language
+    const rtlLangs = new Set(['ar', 'he', 'fa', 'ur']);
+    const isRtl = rtlLangs.has((lang || '').toLowerCase());
+    document.documentElement.setAttribute('dir', isRtl ? 'rtl' : 'ltr');
+    document.documentElement.classList.toggle('rtl', isRtl);
     try {
       const res = await fetch(`/assets/i18n/${lang}.json`);
       const json = await res.json();
@@ -28,4 +33,3 @@ export class I18nService {
 export function t(i18n: I18nService, key: string) {
   return i18n.t(key);
 }
-

@@ -41,6 +41,7 @@ export class SchoolsService {
 
   async listMyCourses(): Promise<Course[]> {
     const res = await fetch(`${this.api}/v1/classes?mine=1`, { credentials: 'include' });
+    if (!res.ok) return [];
     const j = await res.json();
     const rows: ClassItemApi[] = j?.data ?? [];
     return rows.map(this.mapClassToCourse);
@@ -683,17 +684,22 @@ export class SchoolsService {
   }
 
   // SMS: Years & Terms
-  async listYears(schoolId: string): Promise<Array<{ id: string; name: string; status: string; startDate?: string; endDate?: string }>> {
+  async listYears(schoolId: string): Promise<Array<{ id: string; name: string; status: string; structure?: 'semester'|'trimester'|'quarter'|'custom'; startDate?: string; endDate?: string }>> {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/years`, { credentials: 'include' });
     const j = await res.json();
-    return (j?.data ?? []).map((r: any) => ({ id: r.id, name: r.name, status: r.status, startDate: r.startDate, endDate: r.endDate }));
+    return (j?.data ?? []).map((r: any) => ({ id: r.id, name: r.name, status: r.status, structure: r.structure, startDate: r.startDate, endDate: r.endDate }));
   }
-  async createYear(schoolId: string, input: { name: string; startDate?: string; endDate?: string; status?: string }): Promise<boolean> {
+  async createYear(schoolId: string, input: { name: string; startDate?: string; endDate?: string; status?: string; structure?: 'semester'|'trimester'|'quarter'|'custom' }): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/years`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
     return !!(await res.json())?.success;
   }
-  async updateYear(yearId: string, input: { name?: string; status?: string; startDate?: string; endDate?: string }): Promise<boolean> {
+  async updateYear(yearId: string, input: { name?: string; status?: string; structure?: 'semester'|'trimester'|'quarter'|'custom'; startDate?: string; endDate?: string }): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/years/${encodeURIComponent(yearId)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    return !!(await res.json())?.success;
+  }
+  async generateTerms(yearId: string, structure?: 'semester'|'trimester'|'quarter'): Promise<boolean> {
+    const body = structure ? { structure } : {} as any;
+    const res = await fetch(`${this.api}/v1/years/${encodeURIComponent(yearId)}/generate-terms`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return !!(await res.json())?.success;
   }
   async listTerms(yearId: string): Promise<Array<{ id: string; name: string; startDate?: string; endDate?: string }>> {

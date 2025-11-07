@@ -18,6 +18,8 @@ type Config struct {
 	TwilioAccountSID string
 	TwilioAuthToken  string
 	TwilioFrom       string
+	VAPIDPublicKey   string
+	VAPIDPrivateKey  string
 }
 
 func getenv(k, def string) string {
@@ -44,5 +46,7 @@ func Load() Config {
 		TwilioAccountSID: getenv("TWILIO_ACCOUNT_SID", ""),
 		TwilioAuthToken:  getenv("TWILIO_AUTH_TOKEN", ""),
 		TwilioFrom:       getenv("TWILIO_FROM", ""),
+		VAPIDPublicKey:   getenv("VAPID_PUBLIC_KEY", ""),
+		VAPIDPrivateKey:  getenv("VAPID_PRIVATE_KEY", ""),
 	}
 }

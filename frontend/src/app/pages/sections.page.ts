@@ -1,12 +1,13 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { TermPipe } from '../pipes/term.pipe';
 import { SchoolsService } from '../services/schools.service';
 
 @Component({
   selector: 'app-sections-page',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, TermPipe],
   templateUrl: './sections.page.html'
 })
 export class SectionsPage implements OnInit {

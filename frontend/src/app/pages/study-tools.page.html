@@ -1,0 +1,36 @@
+<div class="max-w-4xl mx-auto p-4 space-y-6">
+  <h1 class="text-xl font-semibold text-slate-900 dark:text-white">AI Study Tools</h1>
+
+  <section class="bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-brand p-4 space-y-3">
+    <h2 class="font-medium">Study Material Generator</h2>
+    <label class="text-xs text-slate-600">Reading level</label>
+    <select class="border rounded px-2 py-1" [(ngModel)]="level">
+      <option value="general">General</option>
+      <option value="middle">Middle school</option>
+      <option value="high">High school</option>
+      <option value="college">College</option>
+    </select>
+    <textarea class="w-full h-40 border rounded p-2" placeholder="Paste lesson/topic text…" [(ngModel)]="text"></textarea>
+    <button class="px-3 py-2 rounded bg-blue-600 text-white" (click)="generatePack()" [disabled]="loading">Generate Study Pack</button>
+    <pre class="whitespace-pre-wrap text-sm bg-slate-50 p-3 rounded border" *ngIf="result">{{ result }}</pre>
+  </section>
+
+  <section class="bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-brand p-4 space-y-3">
+    <h2 class="font-medium">Progress Insights</h2>
+    <div class="flex items-center gap-2">
+      <input class="border rounded px-2 py-1 flex-1" placeholder="Class ID" [(ngModel)]="classId" />
+      <button class="px-3 py-2 rounded bg-slate-700 text-white" (click)="loadInsights()" [disabled]="loading">Load</button>
+      <button class="px-3 py-2 rounded bg-emerald-700 text-white" (click)="suggest()" [disabled]="loading">Suggest Actions</button>
+    </div>
+    <pre class="whitespace-pre-wrap text-sm bg-slate-50 p-3 rounded border" *ngIf="insights">{{ insights | json }}</pre>
+    <pre class="whitespace-pre-wrap text-sm bg-slate-50 p-3 rounded border" *ngIf="suggestions">{{ suggestions }}</pre>
+  </section>
+
+  <section class="bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-brand p-4 space-y-3">
+    <h2 class="font-medium">Homework Help (Integrity-Safe)</h2>
+    <input class="border rounded px-2 py-1 w-full" placeholder="Subject (e.g., Algebra, History)" [(ngModel)]="subject" />
+    <textarea class="w-full h-32 border rounded p-2" placeholder="Describe the problem…" [(ngModel)]="question"></textarea>
+    <button class="px-3 py-2 rounded bg-indigo-700 text-white" (click)="help()" [disabled]="loading">Get Hints & Steps</button>
+    <pre class="whitespace-pre-wrap text-sm bg-slate-50 p-3 rounded border" *ngIf="helpText">{{ helpText }}</pre>
+  </section>
+</div>

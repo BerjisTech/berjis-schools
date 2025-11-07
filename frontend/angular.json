@@ -28,6 +28,11 @@
                 "output": "/"
               },
               {
+                "glob": "service-worker.js",
+                "input": "src",
+                "output": "/"
+              },
+              {
                 "glob": "**/*",
                 "input": "public"
               },

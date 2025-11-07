@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterModule } from '@angular/router';
 import { loginUrl, verifySession } from './util';
 import { I18nService } from './i18n.service';
+import { PushService } from './services/push.service';
 import { TPipe } from './t.pipe';
 import { AiChatComponent } from './components/ai-chat/ai-chat.component';
 
@@ -24,12 +25,17 @@ export class AppComponent implements OnInit {
   isHighContrast = false;
   announce = signal('');
 
-  constructor(private router: Router, private i18n: I18nService) {}
+  constructor(private router: Router, private i18n: I18nService, private push: PushService) {}
 
   async ngOnInit() {
     const persisted = (localStorage.getItem('theme') || '').toLowerCase();
     const preferDark = persisted === 'dark';
     this.setTheme(preferDark ? 'dark' : 'light');
+    // enable touch-friendly mode for coarse pointers
+    try {
+      const coarse = (navigator as any).maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches;
+      document.documentElement.classList.toggle('touch', !!coarse);
+    } catch { /* ignore */ }
     // restore accessibility prefs
     const fs = parseFloat(localStorage.getItem('fontScale') || '1');
     if (!Number.isNaN(fs)) { this.setFontScale(Math.min(Math.max(fs, 1), 1.5)); }
@@ -88,4 +94,8 @@ export class AppComponent implements OnInit {
   }
 
   setLang(lang: string) { this.i18n.setLang(lang); }
+  async enablePush() { try { await this.push.subscribe(); } catch { /* ignore */ } }
+  async testPush() {
+    try { await fetch(`${location.origin.replace(/:\/\/.+?\//, '://')}/v1/push/test`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Berjis Schools', body: 'This is a test notification', url: location.origin }) }); } catch {}
+  }
 }

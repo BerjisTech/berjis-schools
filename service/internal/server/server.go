@@ -7,12 +7,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/berjistech/berjis-ecosystem/schools/service/internal/auth"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/csrf"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/jung-kurt/gofpdf"
+	"github.com/redis/go-redis/v9"
 	stripe "github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/checkout/session"
 	"github.com/stripe/stripe-go/v76/refund"
@@ -43,6 +48,8 @@ type Options struct {
 	TwilioAccountSID string
 	TwilioAuthToken  string
 	TwilioFrom       string
+	VAPIDPublicKey   string
+	VAPIDPrivateKey  string
 }
 
 func New(opts Options) *fiber.App {
@@ -161,6 +168,138 @@ func New(opts Options) *fiber.App {
 		}
 	}
 	app := fiber.New()
+	// Security & platform middleware
+	// CORS
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     opts.AllowedOrigins,
+		AllowCredentials: true,
+		AllowHeaders:     "*",
+		AllowMethods:     "GET,POST,PATCH,DELETE,OPTIONS",
+	}))
+	// Security headers
+	app.Use(helmet.New())
+	// HSTS advisory
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		return c.Next()
+	})
+	// Optional CSRF protection (enable via CSRF_ENABLED=1)
+	if strings.TrimSpace(os.Getenv("CSRF_ENABLED")) == "1" {
+		app.Use(csrf.New(csrf.Config{
+			CookieName:     "XSRF-TOKEN",
+			CookieSecure:   true,
+			CookieHTTPOnly: false,
+			KeyLookup:      "header:X-CSRF-Token",
+		}))
+	}
+	// Basic rate limit (per IP)
+	app.Use(limiter.New(limiter.Config{
+		Max:          120,
+		Expiration:   1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string { return "ip:" + c.IP() },
+	}))
+
+	// Optional Redis cache for read-heavy GETs
+	var rdb *redis.Client
+	if addr := strings.TrimSpace(os.Getenv("REDIS_ADDR")); addr != "" {
+		db := 0
+		if v := strings.TrimSpace(os.Getenv("REDIS_DB")); v != "" { if n, err := strconv.Atoi(v); err == nil { db = n } }
+		rdb = redis.NewClient(&redis.Options{ Addr: addr, Password: strings.TrimSpace(os.Getenv("REDIS_PASSWORD")), DB: db })
+		app.Use(func(c *fiber.Ctx) error {
+			if rdb == nil || c.Method() != http.MethodGet { return c.Next() }
+			p := c.Path()
+			// allowlist public/read-heavy paths
+			allowed := p == "/v1/schools" || p == "/v1/classes" || strings.HasPrefix(p, "/v1/classes/") || strings.HasPrefix(p, "/v1/certificates/verify") || strings.HasPrefix(p, "/v1/announcements") || strings.HasPrefix(p, "/v1/years") || strings.HasPrefix(p, "/v1/terms") || strings.HasPrefix(p, "/v1/events")
+			if !allowed { return c.Next() }
+			cookie := c.Get("Cookie")
+			key := "cache:" + p + "?" + c.Context().QueryArgs().String() + ":ck=" + cookie
+			ctx := c.Context()
+			if b, err := rdb.Get(ctx, key).Bytes(); err == nil && len(b) > 0 {
+				c.Set("Content-Type", "application/json")
+				return c.Send(b)
+			}
+			if err := c.Next(); err != nil { return err }
+			if c.Response().StatusCode() == 200 && strings.Contains(strings.ToLower(string(c.Response().Header.ContentType())), "application/json") {
+				_ = rdb.Set(ctx, key, append([]byte{}, c.Response().Body()...), 30*time.Second).Err()
+			}
+			return nil
+		})
+		// cache-busting after writes to relevant resources
+		app.Use(func(c *fiber.Ctx) error {
+			if rdb == nil || c.Method() == http.MethodGet || !strings.HasPrefix(c.Path(), "/v1/") { return c.Next() }
+			// proceed with request first
+			if err := c.Next(); err != nil { return err }
+			if c.Response().StatusCode() >= 200 && c.Response().StatusCode() < 300 {
+				ctx := c.Context()
+				prefixes := []string{"cache:/v1/classes", "cache:/v1/schools", "cache:/v1/announcements", "cache:/v1/years", "cache:/v1/terms", "cache:/v1/events", "cache:/v1/certificates/verify"}
+				for _, pref := range prefixes {
+					var cursor uint64
+					for {
+						keys, cur, _ := rdb.Scan(ctx, cursor, pref+"*", 100).Result()
+						cursor = cur
+						if len(keys) > 0 { _ = rdb.Del(ctx, keys...).Err() }
+						if cursor == 0 { break }
+					}
+				}
+			}
+			return nil
+		})
+	}
+
+	// Optional 2FA requirement for sensitive routes
+	if strings.TrimSpace(os.Getenv("REQUIRE_2FA_FOR_TUTORS")) == "1" {
+		app.Use(func(c *fiber.Ctx) error {
+			if c.Method() == http.MethodGet { return c.Next() }
+			p := c.Path()
+			// Write operations on classes/tests/certificates require 2FA
+			if !(strings.HasPrefix(p, "/v1/classes") || strings.HasPrefix(p, "/v1/tests") || strings.HasPrefix(p, "/v1/certificates")) { return c.Next() }
+			// Verify and check 2FA flags from Core
+			req, _ := http.NewRequest("GET", strings.TrimRight(opts.CoreAPIBase, "/")+"/v1/auth/verify", nil)
+			if v := c.Get("Authorization"); v != "" { req.Header.Set("Authorization", v) }
+			if v := c.Get("Cookie"); v != "" { req.Header.Set("Cookie", v) }
+			cli := &http.Client{ Timeout: 3 * time.Second }
+			resp, err := cli.Do(req)
+			if err != nil { return fiber.ErrUnauthorized }
+			defer resp.Body.Close()
+			var raw map[string]any; _ = json.NewDecoder(resp.Body).Decode(&raw)
+			data, _ := raw["data"].(map[string]any)
+			ok := false
+			if data != nil {
+				// accept several possible flags from Core
+				for _, k := range []string{"twofa", "2fa", "mfa", "mfaVerified"} {
+					if v, okv := data[k]; okv {
+						switch t := v.(type) { case bool: ok = t }
+					}
+				}
+			}
+			if !ok { return c.Status(403).JSON(fiber.Map{"success": false, "message": "2FA required for this action."}) }
+			return c.Next()
+		})
+	}
+
+	// Session timeout (idle) — last-seen cookie; default 12h
+	app.Use(func(c *fiber.Ctx) error {
+		// Only guard API routes; allow OPTIONS
+		if c.Method() == http.MethodOptions || !strings.HasPrefix(c.Path(), "/v1/") {
+			return c.Next()
+		}
+		ttlMin := 720
+		if v := strings.TrimSpace(os.Getenv("SESSION_IDLE_TIMEOUT_MINUTES")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				ttlMin = n
+			}
+		}
+		now := time.Now().Unix()
+		if v := c.Cookies("schools_last_seen"); v != "" {
+			if sec, err := strconv.ParseInt(v, 10, 64); err == nil {
+				if now-sec > int64(ttlMin*60) {
+					return c.Status(401).JSON(fiber.Map{"success": false, "message": "Session expired due to inactivity."})
+				}
+			}
+		}
+		c.Cookie(&fiber.Cookie{Name: "schools_last_seen", Value: fmt.Sprintf("%d", now), HTTPOnly: true, Secure: true, SameSite: "Lax"})
+		return c.Next()
+	})
 
 	// Email sender (noop if SMTP not configured)
 	sendEmail := func(to, subject, body string) error {
@@ -3626,10 +3765,10 @@ func New(opts Options) *fiber.App {
 			return fiber.ErrForbidden
 		}
 		var rows []struct {
-			ID, Name, Status   string
-			StartDate, EndDate *time.Time
+			ID, Name, Status, Structure string
+			StartDate, EndDate          *time.Time
 		}
-		if err := opts.DB.Select(&rows, `SELECT id, name, status, start_date, end_date FROM academic_years WHERE school_id=$1 ORDER BY start_date NULLS LAST, created_at DESC`, sid); err != nil {
+		if err := opts.DB.Select(&rows, `SELECT id, name, status, structure, start_date, end_date FROM academic_years WHERE school_id=$1 ORDER BY start_date NULLS LAST, created_at DESC`, sid); err != nil {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return c.JSON(fiber.Map{"success": true, "data": rows})
@@ -3651,11 +3790,12 @@ func New(opts Options) *fiber.App {
 			Name               string
 			StartDate, EndDate *string
 			Status             string
+			Structure          string
 		}
 		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 			return fiber.ErrBadRequest
 		}
-		_, err = opts.DB.Exec(`INSERT INTO academic_years (school_id, name, start_date, end_date, status) VALUES ($1,$2, NULLIF($3,'')::date, NULLIF($4,'')::date, COALESCE(NULLIF($5,''),'planned'))`, sid, body.Name, coalesceString(body.StartDate), coalesceString(body.EndDate), body.Status)
+		_, err = opts.DB.Exec(`INSERT INTO academic_years (school_id, name, start_date, end_date, status, structure) VALUES ($1,$2, NULLIF($3,'')::date, NULLIF($4,'')::date, COALESCE(NULLIF($5,''),'planned'), COALESCE(NULLIF($6,''),'custom'))`, sid, body.Name, coalesceString(body.StartDate), coalesceString(body.EndDate), body.Status, body.Structure)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
@@ -3679,12 +3819,91 @@ func New(opts Options) *fiber.App {
 		if !allowed {
 			return fiber.ErrForbidden
 		}
-		var body struct{ Name, Status, StartDate, EndDate *string }
+		var body struct{ Name, Status, Structure, StartDate, EndDate *string }
 		_ = c.BodyParser(&body)
-		_, err = opts.DB.Exec(`UPDATE academic_years SET name=COALESCE(NULLIF($1,''), name), status=COALESCE(NULLIF($2,''), status), start_date=COALESCE(NULLIF($3,'')::date, start_date), end_date=COALESCE(NULLIF($4,'')::date, end_date) WHERE id=$5`, coalesceString(body.Name), coalesceString(body.Status), coalesceString(body.StartDate), coalesceString(body.EndDate), yid)
+		_, err = opts.DB.Exec(`UPDATE academic_years SET name=COALESCE(NULLIF($1,''), name), status=COALESCE(NULLIF($2,''), status), structure=COALESCE(NULLIF($3,''), structure), start_date=COALESCE(NULLIF($4,'')::date, start_date), end_date=COALESCE(NULLIF($5,'')::date, end_date) WHERE id=$6`, coalesceString(body.Name), coalesceString(body.Status), coalesceString(body.Structure), coalesceString(body.StartDate), coalesceString(body.EndDate), yid)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// Generate default terms for a year based on structure
+	app.Post("/v1/years/:id/generate-terms", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		yid := c.Params("id")
+		var row struct {
+			SchoolID   string
+			Start, End *time.Time
+			Structure  string
+		}
+		if err := opts.DB.Get(&row, `SELECT school_id, start_date AS start, end_date AS end, structure FROM academic_years WHERE id=$1`, yid); err != nil {
+			return fiber.ErrNotFound
+		}
+		allowed, _ := auth.IsSchoolAdmin(opts.DB, row.SchoolID, uid)
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		type bodyT struct{ Structure string }
+		var body bodyT
+		_ = c.BodyParser(&body)
+		structure := strings.ToLower(strings.TrimSpace(body.Structure))
+		if structure == "" {
+			structure = strings.ToLower(row.Structure)
+		}
+		if structure == "" {
+			structure = "custom"
+		}
+		var parts int
+		switch structure {
+		case "semester":
+			parts = 2
+		case "trimester":
+			parts = 3
+		case "quarter":
+			parts = 4
+		default:
+			return fiber.ErrBadRequest
+		}
+		if row.Start == nil || row.End == nil || row.End.Before(*row.Start) {
+			return c.Status(400).JSON(fiber.Map{"success": false, "message": "year requires valid start and end dates"})
+		}
+		// clear existing terms
+		if _, err := opts.DB.Exec(`DELETE FROM school_terms WHERE year_id=$1`, yid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		dur := row.End.Sub(*row.Start)
+		step := time.Duration(int64(dur) / int64(parts+0))
+		for i := 0; i < parts; i++ {
+			ts := row.Start.Add(step * time.Duration(i))
+			te := func() time.Time {
+				if i == parts-1 {
+					return *row.End
+				}
+				return row.Start.Add(step*time.Duration(i+1)).AddDate(0, 0, -1)
+			}()
+			name := fmt.Sprintf("%s %d", strings.Title(structure[:len(structure)-1]), i+1)
+			if structure == "quarter" {
+				name = fmt.Sprintf("Quarter %d", i+1)
+			}
+			if structure == "semester" {
+				name = fmt.Sprintf("Semester %d", i+1)
+			}
+			if structure == "trimester" {
+				name = fmt.Sprintf("Trimester %d", i+1)
+			}
+			if _, err := opts.DB.Exec(`INSERT INTO school_terms (year_id, name, start_date, end_date) VALUES ($1,$2,$3,$4)`, yid, name, ts, te); err != nil {
+				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
+		}
+		// update structure field on year
+		_, _ = opts.DB.Exec(`UPDATE academic_years SET structure=$1 WHERE id=$2`, structure, yid)
 		return c.JSON(fiber.Map{"success": true})
 	})
 	app.Get("/v1/years/:id/terms", func(c *fiber.Ctx) error {
@@ -3767,6 +3986,118 @@ func New(opts Options) *fiber.App {
 			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// --- Web Push subscriptions ---
+	app.Post("/v1/push/subscribe", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var body struct {
+			Endpoint string
+			Keys     struct {
+				P256dh string `json:"p256dh"`
+				Auth   string `json:"auth"`
+			}
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Endpoint) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO web_push_subscriptions (user_id, endpoint, p256dh, auth) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, created_at=now()`, uid, body.Endpoint, body.Keys.P256dh, body.Keys.Auth)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Delete("/v1/push/subscribe", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var body struct{ Endpoint string }
+		_ = c.BodyParser(&body)
+		if strings.TrimSpace(body.Endpoint) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`DELETE FROM web_push_subscriptions WHERE endpoint=$1 AND user_id=$2`, body.Endpoint, uid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	app.Get("/v1/push/public-key", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"vapidPublicKey": opts.VAPIDPublicKey}})
+	})
+
+	app.Post("/v1/push/test", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var b struct{ Title, Body, Url string }
+		_ = c.BodyParser(&b)
+		// fetch subs
+		type sub struct{ Endpoint, P256dh, Auth string }
+		var subs []sub
+		if err := opts.DB.Select(&subs, `SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE user_id=$1`, uid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		co := func(s, def string) string {
+			if strings.TrimSpace(s) == "" {
+				return def
+			}
+			return s
+		}
+		payload := map[string]any{"title": co(b.Title, "Notification"), "body": co(b.Body, "Test notification"), "url": co(b.Url, "/")}
+		pay, _ := json.Marshal(payload)
+		sent := 0
+		for _, s := range subs {
+			sub := &webpush.Subscription{Endpoint: s.Endpoint, Keys: webpush.Keys{P256dh: s.P256dh, Auth: s.Auth}}
+			resp, err := webpush.SendNotification(pay, sub, &webpush.Options{VAPIDPublicKey: opts.VAPIDPublicKey, VAPIDPrivateKey: opts.VAPIDPrivateKey, TTL: 60})
+			if err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+				sent++
+			}
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"sent": sent}})
+	})
+
+	// List my push subscriptions
+	app.Get("/v1/push/subscriptions", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		type r struct {
+			Endpoint, P256dh, Auth string
+			CreatedAt              time.Time
+		}
+		var rs []r
+		if err := opts.DB.Select(&rs, `SELECT endpoint, p256dh, auth, created_at FROM web_push_subscriptions WHERE user_id=$1 ORDER BY created_at DESC`, uid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		type out struct{ Endpoint, P256dh, Auth, CreatedAt string }
+		outRows := make([]out, 0, len(rs))
+		for _, v := range rs {
+			outRows = append(outRows, out{Endpoint: v.Endpoint, P256dh: v.P256dh, Auth: v.Auth, CreatedAt: v.CreatedAt.Format(time.RFC3339)})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": outRows})
 	})
 
 	// --- SMS: Sections ---
@@ -7662,6 +7993,19 @@ func New(opts Options) *fiber.App {
 			if phone, ok := pl["phone"].(string); ok && strings.TrimSpace(phone) != "" {
 				_ = sendSMS(strings.TrimSpace(phone), subject+": "+body)
 			}
+			// best-effort web push
+			var subs []struct{ Endpoint, P256dh, Auth string }
+			_ = opts.DB.Select(&subs, `SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE user_id=$1`, r.Recipient)
+			if len(subs) > 0 && opts.VAPIDPublicKey != "" && opts.VAPIDPrivateKey != "" {
+				pay, _ := json.Marshal(fiber.Map{"title": subject, "body": body, "url": "/"})
+				for _, s := range subs {
+					resp, err := webpush.SendNotification(pay, &webpush.Subscription{Endpoint: s.Endpoint, Keys: webpush.Keys{P256dh: s.P256dh, Auth: s.Auth}}, &webpush.Options{VAPIDPublicKey: opts.VAPIDPublicKey, VAPIDPrivateKey: opts.VAPIDPrivateKey, TTL: 60})
+					if err == nil && resp != nil {
+						io.Copy(io.Discard, resp.Body)
+						resp.Body.Close()
+					}
+				}
+			}
 			_, _ = opts.DB.Exec(`UPDATE notifications_queue SET status='sent', updated_at=now() WHERE id=$1`, r.ID)
 			processed++
 		}
@@ -9932,6 +10276,644 @@ func New(opts Options) *fiber.App {
 		return c.Redirect(to, http.StatusFound)
 	})
 
+	// ===== Additional AI Utilities =====
+	type aiReq struct {
+		Text    string `json:"text"`
+		Lang    string `json:"lang"`
+		Target  string `json:"target"`
+		Context string `json:"context"`
+	}
+	callAI := func(c *fiber.Ctx, sys string, user string, lang string) error {
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		if opts.DB != nil {
+			var enabled bool = true
+			_ = opts.DB.Get(&enabled, `SELECT ai_enabled FROM ai_settings WHERE user_id=$1`, uid)
+			if !enabled {
+				return c.Status(403).JSON(fiber.Map{"success": false, "message": "AI access is disabled for this account."})
+			}
+		}
+		body := map[string]any{"model": "gpt-4o-mini", "lang": lang, "messages": []map[string]string{{"role": "system", "content": sys}, {"role": "user", "content": user}}}
+		b, _ := json.Marshal(body)
+		req, _ := http.NewRequest("POST", c.BaseURL()+"/v1/ai/chat", bytes.NewReader(b))
+		if v := c.Get("Authorization"); v != "" {
+			req.Header.Set("Authorization", v)
+		}
+		if v := c.Get("Cookie"); v != "" {
+			req.Header.Set("Cookie", v)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if lang != "" {
+			req.Header.Set("Accept-Language", lang)
+		}
+		cli := &http.Client{Timeout: 30 * time.Second}
+		resp, err := cli.Do(req)
+		if err != nil {
+			return c.Status(502).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		defer resp.Body.Close()
+		c.Set("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(resp.StatusCode)
+		_, _ = io.Copy(c, resp.Body)
+		return nil
+	}
+	app.Post("/v1/ai/summarize", func(c *fiber.Ctx) error {
+		var b aiReq
+		_ = c.BodyParser(&b)
+		if strings.TrimSpace(b.Text) == "" {
+			return fiber.ErrBadRequest
+		}
+		sys := "You are an educational summarizer. Produce a concise summary with bullet points for a student."
+		return callAI(c, sys, b.Text, b.Lang)
+	})
+	app.Post("/v1/ai/translate", func(c *fiber.Ctx) error {
+		var b aiReq
+		_ = c.BodyParser(&b)
+		if strings.TrimSpace(b.Text) == "" || strings.TrimSpace(b.Target) == "" {
+			return fiber.ErrBadRequest
+		}
+		sys := fmt.Sprintf("Translate to %s preserving school terminology.", b.Target)
+		return callAI(c, sys, b.Text, b.Lang)
+	})
+	app.Post("/v1/ai/practice", func(c *fiber.Ctx) error {
+		var b aiReq
+		_ = c.BodyParser(&b)
+		if strings.TrimSpace(b.Text) == "" {
+			return fiber.ErrBadRequest
+		}
+		sys := "Generate 5 practice questions (mix of MCQ and short answer) with suggested answers based on the lesson text. Return compact text."
+		return callAI(c, sys, b.Text, b.Lang)
+	})
+	app.Post("/v1/ai/path", func(c *fiber.Ctx) error {
+		var b aiReq
+		_ = c.BodyParser(&b)
+		if strings.TrimSpace(b.Text) == "" {
+			return fiber.ErrBadRequest
+		}
+		sys := "Given a student profile and progress, suggest a short personalized learning path with 3-5 steps and brief rationales."
+		return callAI(c, sys, b.Text, b.Lang)
+	})
+	app.Post("/v1/ai/tts", func(c *fiber.Ctx) error {
+		var b aiReq
+		_ = c.BodyParser(&b)
+		if strings.TrimSpace(b.Text) == "" {
+			return fiber.ErrBadRequest
+		}
+		sys := "Convert the text to a SSML-like plain text suitable for TTS engines."
+		return callAI(c, sys, b.Text, b.Lang)
+	})
+
+	// Homework help (integrity-safe): provide hints/steps, no final answers
+	app.Post("/v1/ai/homework-help", func(c *fiber.Ctx) error {
+		var b struct{ Question string `json:"question"`; Subject string `json:"subject"` }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Question) == "" { return fiber.ErrBadRequest }
+		// guard: block explicit solution requests
+		q := strings.ToLower(b.Question)
+		blocked := []string{"give me the full answer", "solve it fully", "final answer", "exact answer", "write my assignment", "do my homework"}
+		for _, w := range blocked { if strings.Contains(q, w) { return c.Status(400).JSON(fiber.Map{"success": false, "message": "We can guide you with hints and steps, not final answers."}) }
+		}
+		sub := strings.TrimSpace(b.Subject)
+		sys := "You are a tutor that preserves academic integrity. Provide step-by-step guidance, key concepts, and small hints. Do NOT give final numeric values or full essays. Ask brief check questions."
+		prompt := fmt.Sprintf("Subject: %s\nProblem: %s\nInstructions: Provide 3-6 steps, 2-3 hints, and 1 check-your-understanding question. Avoid final answers.", sub, b.Question)
+		return callAI(c, sys, prompt, "")
+	})
+
+	// Study material generation (outline, key points, flashcards)
+	app.Post("/v1/ai/study-materials", func(c *fiber.Ctx) error {
+		var b struct {
+			Text  string `json:"text"`
+			Level string `json:"level"`
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Text) == "" {
+			return fiber.ErrBadRequest
+		}
+		level := strings.TrimSpace(strings.ToLower(b.Level))
+		if level == "" {
+			level = "general"
+		}
+		sys := "You create concise study packs (outline, key points, and 10 flashcards as Q/A) for students. Keep language clear and role-appropriate."
+		payload := fmt.Sprintf("Level: %s\nSource:\n%s\n\nReturn sections: OUTLINE, KEY POINTS (bullets), FLASHCARDS (Q: / A:).", level, b.Text)
+		return callAI(c, sys, payload, "")
+	})
+
+	// ===== Adaptive Testing =====
+	app.Post("/v1/tests/:id/start-adaptive", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		tid := c.Params("id")
+		var mode string
+		if err := opts.DB.Get(&mode, `SELECT mode FROM tests WHERE id=$1`, tid); err != nil || mode != "adaptive" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO adaptive_attempts (test_id, student_user_id) VALUES ($1,$2)
+            ON CONFLICT (test_id, student_user_id) DO UPDATE SET status='in_progress', current_index=0, asked_question_ids='{}'::uuid[], current_difficulty=3, updated_at=now()`, tid, uid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		var id string
+		_ = opts.DB.Get(&id, `SELECT id FROM adaptive_attempts WHERE test_id=$1 AND student_user_id=$2`, tid, uid)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"attemptId": id}})
+	})
+	app.Get("/v1/adaptive/:attemptId/next", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		aid := c.Params("attemptId")
+		var row struct {
+			TestID string   `db:"test_id"`
+			Asked  []string `db:"asked_question_ids"`
+			Cur    int      `db:"current_difficulty"`
+			Index  int      `db:"current_index"`
+			Total  int      `db:"total_questions"`
+		}
+		if err := opts.DB.Get(&row, `SELECT test_id, array(SELECT x::text FROM unnest(asked_question_ids) x) AS asked_question_ids, current_difficulty, current_index, total_questions FROM adaptive_attempts WHERE id=$1 AND student_user_id=$2 AND status='in_progress'`, aid, uid); err != nil {
+			return fiber.ErrNotFound
+		}
+		// select next question matching difficulty not asked yet
+		var q struct {
+			ID      string `db:"id"`
+			Prompt  string `db:"prompt"`
+			QType   string `db:"qtype"`
+			Options []byte `db:"options"`
+			Points  int    `db:"points"`
+		}
+		arr := uuidArrayLiteral(row.Asked)
+		if err := opts.DB.Get(&q, `SELECT id, prompt, qtype, COALESCE(options,'null'::jsonb) AS options, points FROM test_questions 
+            WHERE test_id=$1 AND difficulty=$2 AND id <> ALL($3::uuid[]) ORDER BY random() LIMIT 1`, row.TestID, row.Cur, arr); err != nil {
+			if err := opts.DB.Get(&q, `SELECT id, prompt, qtype, COALESCE(options,'null'::jsonb) AS options, points FROM test_questions 
+                WHERE test_id=$1 AND id <> ALL($2::uuid[]) ORDER BY difficulty, order_index LIMIT 1`, row.TestID, arr); err != nil {
+				return c.JSON(fiber.Map{"success": true, "data": nil})
+			}
+		}
+		return c.JSON(fiber.Map{"success": true, "data": q})
+	})
+	app.Post("/v1/adaptive/:attemptId/answer", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		aid := c.Params("attemptId")
+		var b struct {
+			QuestionID string `json:"questionId"`
+			Correct    *bool  `json:"correct"`
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.QuestionID) == "" || b.Correct == nil {
+			return fiber.ErrBadRequest
+		}
+		var st struct {
+			Asked []string `db:"asked_question_ids"`
+			Cur   int      `db:"current_difficulty"`
+			Index int      `db:"current_index"`
+			Total int      `db:"total_questions"`
+			Theta *float64 `db:"theta"`
+		}
+		if err := opts.DB.Get(&st, `SELECT array(SELECT x::text FROM unnest(asked_question_ids) x) AS asked_question_ids, current_difficulty, current_index, total_questions, theta FROM adaptive_attempts WHERE id=$1 AND student_user_id=$2 AND status='in_progress'`, aid, uid); err != nil {
+			return fiber.ErrNotFound
+		}
+		asked := append(st.Asked, b.QuestionID)
+		idx := st.Index + 1
+		th := 0.0
+		if st.Theta != nil {
+			th = *st.Theta
+		}
+		if *b.Correct {
+			th += 0.5
+		} else {
+			th -= 0.5
+		}
+		if th > 3 {
+			th = 3
+		}
+		if th < -3 {
+			th = -3
+		}
+		nd := 3
+		if th <= -1.5 {
+			nd = 1
+		} else if th <= -0.5 {
+			nd = 2
+		} else if th >= 1.5 {
+			nd = 5
+		} else if th >= 0.5 {
+			nd = 4
+		} else {
+			nd = 3
+		}
+		_, err = opts.DB.Exec(`UPDATE adaptive_attempts SET asked_question_ids=$1::uuid[], current_index=$2, current_difficulty=$3, theta=$4, updated_at=now() WHERE id=$5`, uuidArrayLiteral(asked), idx, nd, th, aid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"nextDifficulty": nd, "index": idx, "total": st.Total}})
+	})
+	app.Post("/v1/adaptive/:attemptId/finish", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		aid := c.Params("attemptId")
+		var th float64
+		if err := opts.DB.Get(&th, `SELECT COALESCE(theta,0) FROM adaptive_attempts WHERE id=$1 AND student_user_id=$2`, aid, uid); err != nil {
+			return fiber.ErrNotFound
+		}
+		score := 50.0 + (th/3.0)*50.0
+		if score < 0 {
+			score = 0
+		}
+		if score > 100 {
+			score = 100
+		}
+		_, _ = opts.DB.Exec(`UPDATE adaptive_attempts SET status='completed', score=$1, updated_at=now() WHERE id=$2`, score, aid)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"score": score}})
+	})
+
+	// ===== Progress Insights =====
+	app.Get("/v1/classes/:id/insights", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		allowed, _ := auth.IsClassTutor(opts.DB, cid, uid)
+		if !allowed {
+			var sid *string
+			_ = opts.DB.Get(&sid, `SELECT school_id FROM classes WHERE id=$1`, cid)
+			if sid != nil {
+				allowed, _ = auth.IsSchoolAdmin(opts.DB, *sid, uid)
+			}
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var students int
+		_ = opts.DB.Get(&students, `SELECT COUNT(*) FROM class_enrollments WHERE class_id=$1 AND status='active'`, cid)
+		var lessons int
+		_ = opts.DB.Get(&lessons, `SELECT COUNT(*) FROM lessons l JOIN subjects s ON s.id=l.subject_id WHERE s.class_id=$1 AND l.status='active'`, cid)
+		var completed int
+		_ = opts.DB.Get(&completed, `SELECT COUNT(*) FROM lesson_progress lp WHERE lp.lesson_id IN (SELECT l.id FROM lessons l JOIN subjects s ON s.id=l.subject_id WHERE s.class_id=$1) AND lp.status='completed'`, cid)
+		var tests int
+		_ = opts.DB.Get(&tests, `SELECT COUNT(*) FROM tests t LEFT JOIN subjects s ON s.id=t.subject_id LEFT JOIN lessons l ON l.id=t.lesson_id LEFT JOIN subjects s2 ON s2.id=l.subject_id LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN classes c2 ON c2.id=s2.class_id WHERE (c.id=$1 OR c2.id=$1) AND t.status<>'deleted'`, cid)
+		var attempts int
+		_ = opts.DB.Get(&attempts, `SELECT COUNT(*) FROM test_attempts ta WHERE ta.test_id IN (SELECT t.id FROM tests t LEFT JOIN subjects s ON s.id=t.subject_id LEFT JOIN lessons l ON l.id=t.lesson_id LEFT JOIN subjects s2 ON s2.id=l.subject_id LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN classes c2 ON c2.id=s2.class_id WHERE (c.id=$1 OR c2.id=$1) AND t.status<>'deleted') AND ta.status<>'in_progress'`, cid)
+		var avgPct *float64
+		_ = opts.DB.Get(&avgPct, `SELECT NULLIF(AVG(score),0) FROM test_attempts ta WHERE ta.status<>'in_progress' AND ta.test_id IN (SELECT t.id FROM tests t LEFT JOIN subjects s ON s.id=t.subject_id LEFT JOIN lessons l ON l.id=t.lesson_id LEFT JOIN subjects s2 ON s2.id=l.subject_id LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN classes c2 ON c2.id=s2.class_id WHERE (c.id=$1 OR c2.id=$1) AND t.status<>'deleted')`, cid)
+		var inactive int
+		_ = opts.DB.Get(&inactive, `SELECT COUNT(*) FROM class_enrollments ce WHERE ce.class_id=$1 AND NOT EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.student_user_id=ce.student_user_id AND lp.lesson_id IN (SELECT l.id FROM lessons l JOIN subjects s ON s.id=l.subject_id WHERE s.class_id=$1) AND lp.updated_at> now()- interval '14 days')`, cid)
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"students": students, "lessons": lessons, "lessonCompletions": completed, "tests": tests, "testAttempts": attempts, "averagePercent": avgPct, "inactive14d": inactive}})
+	})
+	app.Post("/v1/classes/:id/insights/suggest", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		cid := c.Params("id")
+		allowed, _ := auth.IsClassTutor(opts.DB, cid, uid)
+		if !allowed {
+			var sid *string
+			_ = opts.DB.Get(&sid, `SELECT school_id FROM classes WHERE id=$1`, cid)
+			if sid != nil {
+				allowed, _ = auth.IsSchoolAdmin(opts.DB, *sid, uid)
+			}
+		}
+		if !allowed {
+			return fiber.ErrForbidden
+		}
+		var metrics map[string]any
+		if err := opts.DB.Get(&metrics, `SELECT json_build_object(
+			'students', (SELECT COUNT(*) FROM class_enrollments WHERE class_id=$1 AND status='active'),
+			'lessons', (SELECT COUNT(*) FROM lessons l JOIN subjects s ON s.id=l.subject_id WHERE s.class_id=$1 AND l.status='active'),
+			'lessonCompletions', (SELECT COUNT(*) FROM lesson_progress lp WHERE lp.lesson_id IN (SELECT l.id FROM lessons l JOIN subjects s ON s.id=l.subject_id WHERE s.class_id=$1) AND lp.status='completed'),
+			'tests', (SELECT COUNT(*) FROM tests t LEFT JOIN subjects s ON s.id=t.subject_id LEFT JOIN lessons l ON l.id=t.lesson_id LEFT JOIN subjects s2 ON s2.id=l.subject_id LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN classes c2 ON c2.id=s2.class_id WHERE (c.id=$1 OR c2.id=$1) AND t.status<>'deleted'),
+			'testAttempts', (SELECT COUNT(*) FROM test_attempts ta WHERE ta.test_id IN (SELECT t.id FROM tests t LEFT JOIN subjects s ON s.id=t.subject_id LEFT JOIN lessons l ON l.id=t.lesson_id LEFT JOIN subjects s2 ON s2.id=l.subject_id LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN classes c2 ON c2.id=s2.class_id WHERE (c.id=$1 OR c2.id=$1) AND t.status<>'deleted') AND ta.status<>'in_progress'),
+			'averagePercent', (SELECT NULLIF(AVG(score),0) FROM test_attempts ta WHERE ta.status<>'in_progress' AND ta.test_id IN (SELECT t.id FROM tests t LEFT JOIN subjects s ON s.id=t.subject_id LEFT JOIN lessons l ON l.id=t.lesson_id LEFT JOIN subjects s2 ON s2.id=l.subject_id LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN classes c2 ON c2.id=s2.class_id WHERE (c.id=$1 OR c2.id=$1) AND t.status<>'deleted')),
+			'inactive14d', (SELECT COUNT(*) FROM class_enrollments ce WHERE ce.class_id=$1 AND NOT EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.student_user_id=ce.student_user_id AND lp.lesson_id IN (SELECT l.id FROM lessons l JOIN subjects s ON s.id=l.subject_id WHERE s.class_id=$1) AND lp.updated_at> now()- interval '14 days'))
+		)`, cid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		b, _ := json.Marshal(metrics)
+		sys := "You are an academic advisor. Given class metrics JSON, produce short, actionable insights and next-step suggestions for the teacher (3-6 bullets), including at-risk and high-performing notes."
+		return callAI(c, sys, string(b), "")
+	})
+
+	// ===== Grade Levels =====
+	app.Get("/v1/schools/:id/grade-levels", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		sid := c.Params("id")
+		var rows []map[string]any
+		if err := opts.DB.Select(&rows, `SELECT id, code, name, order_index, min_age, max_age FROM grade_levels WHERE school_id=$1 ORDER BY order_index, name`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/schools/:id/grade-levels", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		var isAdmin bool
+		_ = opts.DB.Get(&isAdmin, `SELECT EXISTS (SELECT 1 FROM school_members WHERE school_id=$1 AND user_id=$2 AND role='admin' AND status='active')`, sid, uid)
+		if !isAdmin {
+			return fiber.ErrForbidden
+		}
+		var b struct {
+			Code, Name string
+			OrderIndex *int
+			MinAge     *int
+			MaxAge     *int
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Code) == "" || strings.TrimSpace(b.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO grade_levels (school_id, code, name, order_index, min_age, max_age) VALUES ($1,$2,$3,COALESCE($4,0),$5,$6)`, sid, b.Code, b.Name, b.OrderIndex, b.MinAge, b.MaxAge)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Patch("/v1/grade-levels/:id", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		id := c.Params("id")
+		var sid string
+		if err := opts.DB.Get(&sid, `SELECT school_id FROM grade_levels WHERE id=$1`, id); err != nil {
+			return fiber.ErrNotFound
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var isAdmin bool
+		_ = opts.DB.Get(&isAdmin, `SELECT EXISTS (SELECT 1 FROM school_members WHERE school_id=$1 AND user_id=$2 AND role='admin' AND status='active')`, sid, uid)
+		if !isAdmin {
+			return fiber.ErrForbidden
+		}
+		var b struct {
+			Code, Name *string
+			OrderIndex *int
+			MinAge     *int
+			MaxAge     *int
+		}
+		_ = c.BodyParser(&b)
+		_, err = opts.DB.Exec(`UPDATE grade_levels SET code=COALESCE($1,code), name=COALESCE($2,name), order_index=COALESCE($3,order_index), min_age=COALESCE($4,min_age), max_age=COALESCE($5,max_age) WHERE id=$6`, b.Code, b.Name, b.OrderIndex, b.MinAge, b.MaxAge, id)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// ===== Curriculum Frameworks =====
+	app.Post("/v1/schools/:id/frameworks", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		sid := c.Params("id")
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var isAdmin bool
+		_ = opts.DB.Get(&isAdmin, `SELECT EXISTS (SELECT 1 FROM school_members WHERE school_id=$1 AND user_id=$2 AND role='admin' AND status='active')`, sid, uid)
+		if !isAdmin {
+			return fiber.ErrForbidden
+		}
+		var b struct{ Region, Name, Description string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Name) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO curriculum_frameworks (school_id, region, name, description, created_by_user_id) VALUES ($1,$2,$3,$4,$5)`, sid, nullIfEmptyStr(b.Region), b.Name, nullIfEmptyStr(b.Description), uid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Get("/v1/schools/:id/frameworks", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		sid := c.Params("id")
+		var rows []map[string]any
+		if err := opts.DB.Select(&rows, `SELECT id, region, name, description, created_at FROM curriculum_frameworks WHERE school_id=$1 OR school_id IS NULL ORDER BY created_at DESC`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/frameworks/:id/outcomes", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		fid := c.Params("id")
+		var b struct {
+			Code, Description, GradeBand string
+			OrderIndex                   *int
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Description) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err := opts.DB.Exec(`INSERT INTO learning_outcomes (framework_id, code, description, grade_band, order_index) VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5,0))`, fid, nullIfEmptyStr(b.Code), b.Description, b.GradeBand, b.OrderIndex)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Post("/v1/lessons/:id/outcomes", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		lid := c.Params("id")
+		var b struct{ OutcomeID string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.OutcomeID) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err := opts.DB.Exec(`INSERT INTO lesson_outcomes (lesson_id, outcome_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, lid, b.OutcomeID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Post("/v1/tests/:id/outcomes", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		tid := c.Params("id")
+		var b struct{ OutcomeID string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.OutcomeID) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err := opts.DB.Exec(`INSERT INTO test_outcomes (test_id, outcome_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, tid, b.OutcomeID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// ===== Accreditations =====
+	app.Get("/v1/schools/:id/accreditations", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		sid := c.Params("id")
+		var rows []map[string]any
+		if err := opts.DB.Select(&rows, `SELECT id, region, accreditor_name, accreditation_id, status, issued_at, expires_at, evidence_url FROM school_accreditations WHERE school_id=$1 ORDER BY created_at DESC`, sid); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/schools/:id/accreditations", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		sid := c.Params("id")
+		var isAdmin bool
+		_ = opts.DB.Get(&isAdmin, `SELECT EXISTS (SELECT 1 FROM school_members WHERE school_id=$1 AND user_id=$2 AND role='admin' AND status='active')`, sid, uid)
+		if !isAdmin {
+			return fiber.ErrForbidden
+		}
+		var b struct{ Region, AccreditorName, AccreditationID, Status, EvidenceURL, IssuedAt, ExpiresAt string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Region) == "" || strings.TrimSpace(b.AccreditorName) == "" {
+			return fiber.ErrBadRequest
+		}
+		_, err = opts.DB.Exec(`INSERT INTO school_accreditations (school_id, region, accreditor_name, accreditation_id, status, evidence_url, issued_at, expires_at) VALUES ($1,$2,$3,NULLIF($4,''),COALESCE(NULLIF($5,''),'active'), NULLIF($6,''), NULLIF($7,'')::timestamptz, NULLIF($8,'')::timestamptz)`, sid, b.Region, b.AccreditorName, b.AccreditationID, b.Status, b.EvidenceURL, b.IssuedAt, b.ExpiresAt)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
+	// ===== Legal & Consents =====
+	app.Get("/v1/legal/documents", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		region := strings.TrimSpace(c.Query("region"))
+		if region == "" {
+			region = "default"
+		}
+		var rows []map[string]any
+		if err := opts.DB.Select(&rows, `SELECT id, region, kind, version, title, url, effective_at FROM legal_documents WHERE region IN ($1,'default') ORDER BY effective_at DESC`, region); err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true, "data": rows})
+	})
+	app.Post("/v1/legal/consent", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var b struct{ Region, Kind, Version string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Kind) == "" || strings.TrimSpace(b.Version) == "" {
+			return fiber.ErrBadRequest
+		}
+		reg := strings.TrimSpace(b.Region)
+		if reg == "" {
+			reg = "default"
+		}
+		_, err = opts.DB.Exec(`INSERT INTO user_consents (user_id, region, kind, version) VALUES ($1,$2,$3,$4)
+            ON CONFLICT (user_id, region, kind) DO UPDATE SET version=EXCLUDED.version, consented_at=now()`, uid, reg, strings.ToLower(b.Kind), b.Version)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Post("/v1/legal/parental-consent/request", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var b struct{ ChildUserID, GuardianUserID string }
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.ChildUserID) == "" || strings.TrimSpace(b.GuardianUserID) == "" {
+			return fiber.ErrBadRequest
+		}
+		var ok bool
+		_ = opts.DB.Get(&ok, `SELECT EXISTS (SELECT 1 FROM guardians_children WHERE guardian_user_id=$1 AND child_user_id=$2)`, b.GuardianUserID, b.ChildUserID)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		if uid != b.GuardianUserID {
+			var count int
+			_ = opts.DB.Get(&count, `SELECT COUNT(*) FROM school_members m WHERE m.user_id=$1 AND m.role='admin' AND EXISTS (SELECT 1 FROM school_members m2 WHERE m2.user_id=$2 AND m2.school_id=m.school_id)`, uid, b.ChildUserID)
+			if count == 0 {
+				return fiber.ErrForbidden
+			}
+		}
+		_, err = opts.DB.Exec(`INSERT INTO parental_consents (child_user_id, guardian_user_id) VALUES ($1,$2) ON CONFLICT (child_user_id, guardian_user_id) DO UPDATE SET status='pending', requested_at=now(), responded_at=NULL`, b.ChildUserID, b.GuardianUserID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+	app.Post("/v1/legal/parental-consent/respond", func(c *fiber.Ctx) error {
+		if opts.DB == nil {
+			return fiber.ErrInternalServerError
+		}
+		uid, err := getUserID(c)
+		if err != nil {
+			return fiber.ErrUnauthorized
+		}
+		var b struct {
+			ChildUserID string
+			Decision    string
+			Notes       string
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.ChildUserID) == "" {
+			return fiber.ErrBadRequest
+		}
+		dec := strings.ToLower(strings.TrimSpace(b.Decision))
+		switch dec {
+		case "approved", "denied", "revoked":
+		default:
+			dec = "approved"
+		}
+		var ok bool
+		_ = opts.DB.Get(&ok, `SELECT EXISTS (SELECT 1 FROM guardians_children WHERE guardian_user_id=$1 AND child_user_id=$2)`, uid, b.ChildUserID)
+		if !ok {
+			return fiber.ErrForbidden
+		}
+		_, err = opts.DB.Exec(`UPDATE parental_consents SET status=$1, notes=NULLIF($2,''), responded_at=now() WHERE child_user_id=$3 AND guardian_user_id=$4`, dec, b.Notes, b.ChildUserID, uid)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return c.JSON(fiber.Map{"success": true})
+	})
+
 	return app
 }
 
@@ -10071,4 +11053,24 @@ func stripeRefund(chargeID string) (any, error) {
 // wrapped for testability
 var refundNew = func(p *stripe.RefundParams) (*stripe.Refund, error) {
 	return refund.New(p)
+}
+
+// uuidArrayLiteral converts a slice of UUID strings to a Postgres uuid[] literal
+func uuidArrayLiteral(ids []string) string {
+	if len(ids) == 0 {
+		return "{}"
+	}
+	b := strings.Builder{}
+	b.WriteByte('{')
+	for i, s := range ids {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		// ensure quoted elements
+		b.WriteByte('"')
+		b.WriteString(s)
+		b.WriteByte('"')
+	}
+	b.WriteByte('}')
+	return b.String()
 }

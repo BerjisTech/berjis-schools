@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { SchoolsService } from '../services/schools.service';
+import { DateLPipe } from '../pipes/date-l.pipe';
 
 @Component({
   selector: 'app-verify-certificate',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, DateLPipe],
   templateUrl: './verify-certificate.page.html'
 })
 export class VerifyCertificatePage {

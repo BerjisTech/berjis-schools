@@ -112,3 +112,36 @@ Roadmap (near‑term)
    - Location: migrations/0031_appointments.sql; server /v1/classes/:id/appointments/* and /v1/appointments/*; frontend /class/:id/appointments
    - Status: Fully functional
    - Notes: Tutor creates slots; students/guardians book; cancel and my bookings endpoints available.
+
+? IMPLEMENTED: Adaptive testing (optional)
+   - Location: migrations/0070_adaptive_tests.sql; server /v1/tests/:id/start-adaptive, /v1/adaptive/:attemptId/{next,answer,finish}
+   - Status: Fully functional (simple difficulty ladder)
+   - Notes: 1–5 difficulty bands; naive theta update +/-0.5; targets 15 questions by default.
+
+? IMPLEMENTED: AI utilities (summarize/translate/practice/learning path/TTS)
+   - Location: server /v1/ai/{summarize,translate,practice,path,tts}; frontend AiService methods
+   - Status: Fully functional (proxied via /v1/ai/chat with safety checks)
+   - Notes: Honors AI settings + guardian controls; language forwarded via Accept-Language.
+
+? IMPLEMENTED: Grade/year levels
+   - Location: migrations/0071_grade_levels.sql; server /v1/schools/:id/grade-levels, PATCH /v1/grade-levels/:id
+   - Status: Fully functional
+   - Notes: Provides code/name/order and min/max age for regional schemes.
+
+? IMPLEMENTED: Curriculum frameworks and outcomes
+   - Location: migrations/0072_curriculum_frameworks.sql; server frameworks/outcomes endpoints
+   - Status: Fully functional (CRUD + mapping to lessons/tests)
+
+? IMPLEMENTED: Regional accreditations
+   - Location: migrations/0073_accreditation.sql; server /v1/schools/:id/accreditations
+   - Status: Fully functional
+
+? IMPLEMENTED: Legal docs, user/parental consents
+   - Location: migrations/0074_consents.sql; server /v1/legal/*
+   - Status: Fully functional (records consents; COPPA workflow for guardian approval)
+   - Notes: GDPR/COPPA policy enforcement beyond data capture remains broader org compliance.
+
+? IMPLEMENTED: API rate limiting + security headers
+   - Location: server middleware (helmet + limiter; optional CSRF via env)
+   - Status: Fully functional
+   - Notes: TLS/2FA/password strength handled by Core API and infra; CSRF opt-in to avoid breaking cross-origin SPA until clients set header.

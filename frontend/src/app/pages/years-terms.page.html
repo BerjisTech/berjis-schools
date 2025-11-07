@@ -31,10 +31,17 @@
               <option value="completed">completed</option>
               <option value="archived">archived</option>
             </select>
-            <div class="flex gap-2">
-              <button class="px-3 py-1 rounded bg-blue-700 text-white" (click)="saveYear()" [disabled]="busy">Save</button>
-              <button class="px-3 py-1 rounded border" (click)="cancelYearEdit()">Cancel</button>
-            </div>
+              <div class="flex gap-2 flex-wrap items-center">
+                <button class="px-3 py-1 rounded bg-blue-700 text-white" (click)="saveYear()" [disabled]="busy">Save</button>
+                <button class="px-3 py-1 rounded border" (click)="cancelYearEdit()">Cancel</button>
+                <span class="text-xs text-slate-500">Structure:</span>
+                <select class="border rounded px-2 py-1 text-xs" [(ngModel)]="editYear.structure" name="eystructure">
+                  <option value="custom">custom</option>
+                  <option value="semester">semester</option>
+                  <option value="trimester">trimester</option>
+                  <option value="quarter">quarter</option>
+                </select>
+              </div>
           </div>
         </div>
       </div>
@@ -45,6 +52,15 @@
           <input class="border rounded px-3 py-2" type="date" [(ngModel)]="yn.startDate" name="startDate" />
           <input class="border rounded px-3 py-2" type="date" [(ngModel)]="yn.endDate" name="endDate" />
         </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="text-slate-500">Structure</span>
+          <select class="border rounded px-2 py-1" [(ngModel)]="yn.structure" name="structure">
+            <option value="custom">custom</option>
+            <option value="semester">semester</option>
+            <option value="trimester">trimester</option>
+            <option value="quarter">quarter</option>
+          </select>
+        </div>
         <button class="px-3 py-2 rounded bg-blue-700 text-white" [disabled]="busy">Add year</button>
       </form>
     </div>
@@ -53,6 +69,12 @@
       <h3 class="font-medium">Terms</h3>
       <div *ngIf="!selectedYear()" class="text-sm text-slate-600">Select a year to manage terms.</div>
       <div *ngIf="selectedYear()" class="space-y-2">
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="text-slate-500">Generate default:</span>
+          <button class="px-2 py-1 rounded border" (click)="generate('semester')" [disabled]="busy">Semesters</button>
+          <button class="px-2 py-1 rounded border" (click)="generate('trimester')" [disabled]="busy">Trimesters</button>
+          <button class="px-2 py-1 rounded border" (click)="generate('quarter')" [disabled]="busy">Quarters</button>
+        </div>
         <div *ngFor="let t of terms()" class="border rounded px-3 py-2">
           <div *ngIf="editTermId()!==t.id" class="flex items-center justify-between">
             <div>

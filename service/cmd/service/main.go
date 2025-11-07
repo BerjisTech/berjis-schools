@@ -39,6 +39,8 @@ func main() {
 		TwilioAccountSID: cfg.TwilioAccountSID,
 		TwilioAuthToken:  cfg.TwilioAuthToken,
 		TwilioFrom:       cfg.TwilioFrom,
+		VAPIDPublicKey:   cfg.VAPIDPublicKey,
+		VAPIDPrivateKey:  cfg.VAPIDPrivateKey,
 	})
 	addr := ":" + cfg.Port
 	log.Printf("starting %s on %s (env=%s)", cfg.AppName, addr, cfg.Env)

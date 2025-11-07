@@ -16,6 +16,7 @@ import { LessonViewComponent } from './app/components/course/lesson-view.compone
 import { TestViewComponent } from './app/components/course/test-view.component';
 import { CreateCoursePage } from './app/pages/create-course.page';
 import { AppComponent } from './app/app.component';
+import { urlFor } from './app/util';
 import { SearchPage } from './app/pages/search.page';
 import { authGuard } from './app/guards/auth.guard';
 import { MyCoursesPage } from './app/pages/my-courses.page';
@@ -30,11 +31,13 @@ import { VerifyCertificatePage } from './app/pages/verify-certificate.page';
 import { MessagesPage } from './app/pages/messages.page';
 import { ReceiptPage } from './app/pages/receipt.page';
 import { PaymentSettingsPage } from './app/pages/payment-settings.page';
+import { NotificationSettingsPage } from './app/pages/notification-settings.page';
 import { MyPurchasesPage } from './app/pages/my-purchases.page';
 import { FeedbackPage } from './app/pages/feedback.page';
 import { YearsTermsPage } from './app/pages/years-terms.page';
 import { SectionsPage } from './app/pages/sections.page';
 import { ClassAttendancePage } from './app/pages/class-attendance.page';
+import { StudyToolsPage } from './app/pages/study-tools.page';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -63,7 +66,9 @@ const routes: Routes = [
   { path: 'purchases', loadComponent: () => Promise.resolve(MyPurchasesPage), canActivate: [authGuard] },
   { path: 'receipt/:id', loadComponent: () => Promise.resolve(ReceiptPage), canActivate: [authGuard] },
   { path: 'settings/payments', loadComponent: () => Promise.resolve(PaymentSettingsPage), canActivate: [authGuard] },
+  { path: 'settings/notifications', loadComponent: () => Promise.resolve(NotificationSettingsPage), canActivate: [authGuard] },
   { path: 'feedback', loadComponent: () => Promise.resolve(FeedbackPage), canActivate: [authGuard] },
+  { path: 'study-tools', loadComponent: () => Promise.resolve(StudyToolsPage), canActivate: [authGuard] },
   { path: 'schools/years', loadComponent: () => Promise.resolve(YearsTermsPage), canActivate: [authGuard] },
   { path: 'schools/sections', loadComponent: () => Promise.resolve(SectionsPage), canActivate: [authGuard] },
   { path: 'class/:id/attendance', loadComponent: () => Promise.resolve(ClassAttendancePage), canActivate: [authGuard] },
@@ -80,15 +85,18 @@ bootstrapApplication(AppComponent, { providers: [provideRouter(routes)] }).catch
 
 // Basic client error tracking to Schools API
 try {
-  const api = (window as any).SCHOOLS_API || (window.location.origin);
-  window.addEventListener('error', (e) => {
+  const api = urlFor('api');
+  const post = (payload: any) => {
     try {
-      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e.message || 'error'), url: window.location.href, stack: String((e as any).error?.stack || ''), context: { filename: (e as any).filename, lineno: (e as any).lineno, colno: (e as any).colno } }) }).catch((err) => console.error('error post failed', err));
-    } catch (err) { console.error('error capture failed', err); }
-  });
-  window.addEventListener('unhandledrejection', (e: any) => {
-    try {
-      fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: 'error', message: String(e?.reason?.message || 'unhandledrejection'), url: window.location.href, stack: String(e?.reason?.stack || ''), context: {} }) }).catch((err) => console.error('unhandledrejection post failed', err));
-    } catch (err) { console.error('unhandledrejection capture failed', err); }
-  });
-} catch (err) { console.error('global error init failed', err); }
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      const sent = (navigator as any).sendBeacon ? (navigator as any).sendBeacon(`${api}/v1/errors`, blob) : false;
+      if (!sent) {
+        fetch(`${api}/v1/errors`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => { /* ignore */ });
+      }
+    } catch (e) { /* ignore serialization errors */ }
+  };
+  window.addEventListener('error', (e) => post({ severity: 'error', message: String(e.message || 'error'), url: window.location.href, stack: String((e as any).error?.stack || ''), context: { filename: (e as any).filename, lineno: (e as any).lineno, colno: (e as any).colno } }));
+  window.addEventListener('unhandledrejection', (e: any) => post({ severity: 'error', message: String(e?.reason?.message || 'unhandledrejection'), url: window.location.href, stack: String(e?.reason?.stack || ''), context: {} }));
+} catch (e) {
+  // ignore init errors for error beacons
+}

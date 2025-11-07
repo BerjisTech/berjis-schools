@@ -117,6 +117,9 @@
         <h2 class="text-lg font-semibold">Manage your course</h2>
         <p class="text-xs text-emerald-700">Add subjects, create lessons (including simulations), and schedule assessments for your students.</p>
       </div>
+      <div>
+        <a [routerLink]="['/study-tools']" [queryParams]="{ classId: course()?.classId || course()?.id }" class="inline-flex items-center gap-2 px-3 py-2 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50 text-sm">View Insights</a>
+      </div>
       <form class="space-y-3" (ngSubmit)="createSubject()">
         <input class="w-full border border-emerald-200 rounded-md px-3 py-2 text-sm" placeholder="New subject title"
           [ngModel]="subjectTitle()" (ngModelChange)="subjectTitle.set($event)" name="subjectTitle" />
@@ -217,6 +220,13 @@
                     id="lessonAudioDuration-{{s.id}}"
                     name="lessonAudioDuration-{{s.id}}" />
                 </div>
+                <div class="md:col-span-2">
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonTranscript-' + s.id">Transcript (optional)</label>
+                  <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="3"
+                    [(ngModel)]="lessonFormState.transcript"
+                    id="lessonTranscript-{{s.id}}"
+                    name="lessonTranscript-{{s.id}}" placeholder="Paste plain text transcript to improve accessibility."></textarea>
+                </div>
               </div>
               <div *ngSwitchCase="'video'" class="grid md:grid-cols-2 gap-3">
                 <div>
@@ -232,6 +242,20 @@
                     [(ngModel)]="lessonFormState.videoDuration"
                     id="lessonVideoDuration-{{s.id}}"
                     name="lessonVideoDuration-{{s.id}}" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonCaptionsUrl-' + s.id">Captions URL (WebVTT/SRT)</label>
+                  <input class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    [(ngModel)]="lessonFormState.captionsUrl"
+                    id="lessonCaptionsUrl-{{s.id}}"
+                    name="lessonCaptionsUrl-{{s.id}}" placeholder="https://.../captions.vtt" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1" [attr.for]="'lessonTranscriptVideo-' + s.id">Transcript (optional)</label>
+                  <textarea class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="3"
+                    [(ngModel)]="lessonFormState.transcript"
+                    id="lessonTranscriptVideo-{{s.id}}"
+                    name="lessonTranscriptVideo-{{s.id}}" placeholder="Paste plain text transcript to improve accessibility."></textarea>
                 </div>
               </div>
               <div *ngSwitchCase="'live'" class="grid md:grid-cols-3 gap-3">

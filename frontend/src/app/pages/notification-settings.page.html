@@ -1,0 +1,25 @@
+<div class="max-w-3xl mx-auto p-6 space-y-6">
+  <h1 class="text-2xl font-bold">Notifications</h1>
+  <p class="text-sm text-slate-600">Enable browser push notifications and manage this device’s subscription.</p>
+
+  <div *ngIf="message()" class="rounded border px-3 py-2 text-sm" [class.bg-emerald-50]="message()?.includes('enabled') || message()?.includes('sent')" [class.text-emerald-700]="message()?.includes('enabled') || message()?.includes('sent')">
+    {{ message() }}
+  </div>
+
+  <div class="flex gap-2">
+    <button class="px-4 py-2 rounded bg-blue-700 text-white" (click)="enable()">Enable push</button>
+    <button class="px-4 py-2 rounded border" (click)="test()">Send test</button>
+    <button class="px-4 py-2 rounded border" (click)="refresh()">Refresh</button>
+  </div>
+
+  <div class="space-y-2">
+    <div class="text-sm font-semibold">This device’s subscriptions</div>
+    <div *ngIf="loading()" class="text-sm text-slate-500">Loading…</div>
+    <div *ngIf="!loading() && !subs().length" class="text-sm text-slate-500">No subscriptions yet.</div>
+    <div *ngFor="let s of subs()" class="flex items-center justify-between rounded border px-3 py-2 text-sm">
+      <div class="truncate"><span class="text-slate-500">Endpoint:</span> {{ s.endpoint }}</div>
+      <button class="px-2 py-1 rounded border" (click)="remove(s.endpoint)">Remove</button>
+    </div>
+  </div>
+</div>
+
