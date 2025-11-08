@@ -68,6 +68,20 @@ export async function verifySession(opts: { attemptRefresh?: boolean } = {}): Pr
   return { valid: false };
 }
 
+// App roles helper: checks if the user has a specific role for an app
+export async function hasAppRole(app: string, role: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${urlFor('api')}/v1/apps/${encodeURIComponent(app)}/roles`, { credentials: 'include' });
+    if (!res.ok) return false;
+    const json = await res.json();
+    const list: string[] = json?.data ?? [];
+    const key = `${app}.${role}`;
+    return list.includes(key) || list.includes(role);
+  } catch {
+    return false;
+  }
+}
+
 export interface AuthedUserProfile {
   uuid?: string;
   email?: string;

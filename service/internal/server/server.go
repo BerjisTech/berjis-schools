@@ -173,8 +173,9 @@ func New(opts Options) *fiber.App {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     opts.AllowedOrigins,
 		AllowCredentials: true,
-		AllowHeaders:     "*",
-		AllowMethods:     "GET,POST,PATCH,DELETE,OPTIONS",
+		// Explicit headers to satisfy credentialed preflights
+		AllowHeaders: "Content-Type, Authorization, X-Requested-With, Accept, Origin",
+		AllowMethods: "GET,POST,PATCH,DELETE,OPTIONS",
 	}))
 	// Security headers
 	app.Use(helmet.New())
@@ -203,14 +204,22 @@ func New(opts Options) *fiber.App {
 	var rdb *redis.Client
 	if addr := strings.TrimSpace(os.Getenv("REDIS_ADDR")); addr != "" {
 		db := 0
-		if v := strings.TrimSpace(os.Getenv("REDIS_DB")); v != "" { if n, err := strconv.Atoi(v); err == nil { db = n } }
-		rdb = redis.NewClient(&redis.Options{ Addr: addr, Password: strings.TrimSpace(os.Getenv("REDIS_PASSWORD")), DB: db })
+		if v := strings.TrimSpace(os.Getenv("REDIS_DB")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				db = n
+			}
+		}
+		rdb = redis.NewClient(&redis.Options{Addr: addr, Password: strings.TrimSpace(os.Getenv("REDIS_PASSWORD")), DB: db})
 		app.Use(func(c *fiber.Ctx) error {
-			if rdb == nil || c.Method() != http.MethodGet { return c.Next() }
+			if rdb == nil || c.Method() != http.MethodGet {
+				return c.Next()
+			}
 			p := c.Path()
 			// allowlist public/read-heavy paths
 			allowed := p == "/v1/schools" || p == "/v1/classes" || strings.HasPrefix(p, "/v1/classes/") || strings.HasPrefix(p, "/v1/certificates/verify") || strings.HasPrefix(p, "/v1/announcements") || strings.HasPrefix(p, "/v1/years") || strings.HasPrefix(p, "/v1/terms") || strings.HasPrefix(p, "/v1/events")
-			if !allowed { return c.Next() }
+			if !allowed {
+				return c.Next()
+			}
 			cookie := c.Get("Cookie")
 			key := "cache:" + p + "?" + c.Context().QueryArgs().String() + ":ck=" + cookie
 			ctx := c.Context()
@@ -218,7 +227,9 @@ func New(opts Options) *fiber.App {
 				c.Set("Content-Type", "application/json")
 				return c.Send(b)
 			}
-			if err := c.Next(); err != nil { return err }
+			if err := c.Next(); err != nil {
+				return err
+			}
 			if c.Response().StatusCode() == 200 && strings.Contains(strings.ToLower(string(c.Response().Header.ContentType())), "application/json") {
 				_ = rdb.Set(ctx, key, append([]byte{}, c.Response().Body()...), 30*time.Second).Err()
 			}
@@ -226,9 +237,13 @@ func New(opts Options) *fiber.App {
 		})
 		// cache-busting after writes to relevant resources
 		app.Use(func(c *fiber.Ctx) error {
-			if rdb == nil || c.Method() == http.MethodGet || !strings.HasPrefix(c.Path(), "/v1/") { return c.Next() }
+			if rdb == nil || c.Method() == http.MethodGet || !strings.HasPrefix(c.Path(), "/v1/") {
+				return c.Next()
+			}
 			// proceed with request first
-			if err := c.Next(); err != nil { return err }
+			if err := c.Next(); err != nil {
+				return err
+			}
 			if c.Response().StatusCode() >= 200 && c.Response().StatusCode() < 300 {
 				ctx := c.Context()
 				prefixes := []string{"cache:/v1/classes", "cache:/v1/schools", "cache:/v1/announcements", "cache:/v1/years", "cache:/v1/terms", "cache:/v1/events", "cache:/v1/certificates/verify"}
@@ -237,8 +252,12 @@ func New(opts Options) *fiber.App {
 					for {
 						keys, cur, _ := rdb.Scan(ctx, cursor, pref+"*", 100).Result()
 						cursor = cur
-						if len(keys) > 0 { _ = rdb.Del(ctx, keys...).Err() }
-						if cursor == 0 { break }
+						if len(keys) > 0 {
+							_ = rdb.Del(ctx, keys...).Err()
+						}
+						if cursor == 0 {
+							break
+						}
 					}
 				}
 			}
@@ -249,30 +268,46 @@ func New(opts Options) *fiber.App {
 	// Optional 2FA requirement for sensitive routes
 	if strings.TrimSpace(os.Getenv("REQUIRE_2FA_FOR_TUTORS")) == "1" {
 		app.Use(func(c *fiber.Ctx) error {
-			if c.Method() == http.MethodGet { return c.Next() }
+			if c.Method() == http.MethodGet {
+				return c.Next()
+			}
 			p := c.Path()
 			// Write operations on classes/tests/certificates require 2FA
-			if !(strings.HasPrefix(p, "/v1/classes") || strings.HasPrefix(p, "/v1/tests") || strings.HasPrefix(p, "/v1/certificates")) { return c.Next() }
+			if !(strings.HasPrefix(p, "/v1/classes") || strings.HasPrefix(p, "/v1/tests") || strings.HasPrefix(p, "/v1/certificates")) {
+				return c.Next()
+			}
 			// Verify and check 2FA flags from Core
 			req, _ := http.NewRequest("GET", strings.TrimRight(opts.CoreAPIBase, "/")+"/v1/auth/verify", nil)
-			if v := c.Get("Authorization"); v != "" { req.Header.Set("Authorization", v) }
-			if v := c.Get("Cookie"); v != "" { req.Header.Set("Cookie", v) }
-			cli := &http.Client{ Timeout: 3 * time.Second }
+			if v := c.Get("Authorization"); v != "" {
+				req.Header.Set("Authorization", v)
+			}
+			if v := c.Get("Cookie"); v != "" {
+				req.Header.Set("Cookie", v)
+			}
+			cli := &http.Client{Timeout: 3 * time.Second}
 			resp, err := cli.Do(req)
-			if err != nil { return fiber.ErrUnauthorized }
+			if err != nil {
+				return fiber.ErrUnauthorized
+			}
 			defer resp.Body.Close()
-			var raw map[string]any; _ = json.NewDecoder(resp.Body).Decode(&raw)
+			var raw map[string]any
+			_ = json.NewDecoder(resp.Body).Decode(&raw)
 			data, _ := raw["data"].(map[string]any)
 			ok := false
 			if data != nil {
 				// accept several possible flags from Core
 				for _, k := range []string{"twofa", "2fa", "mfa", "mfaVerified"} {
 					if v, okv := data[k]; okv {
-						switch t := v.(type) { case bool: ok = t }
+						switch t := v.(type) {
+						case bool:
+							ok = t
+						}
 					}
 				}
 			}
-			if !ok { return c.Status(403).JSON(fiber.Map{"success": false, "message": "2FA required for this action."}) }
+			if !ok {
+				return c.Status(403).JSON(fiber.Map{"success": false, "message": "2FA required for this action."})
+			}
 			return c.Next()
 		})
 	}
@@ -677,6 +712,10 @@ func New(opts Options) *fiber.App {
                 ORDER BY s.created_at DESC`, uid); err != nil {
 				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 			}
+		} else if role == "owner" {
+			if err := opts.DB.Select(&rows, `SELECT id, owner_user_id, name, description, is_verified, created_at, updated_at FROM schools WHERE owner_user_id=$1 ORDER BY created_at DESC`, uid); err != nil {
+				return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+			}
 		} else {
 			if err := opts.DB.Select(&rows, `SELECT s.id, s.owner_user_id, s.name, s.description, s.is_verified, s.created_at, s.updated_at
                 FROM schools s JOIN school_members m ON m.school_id=s.id WHERE m.user_id=$1 AND m.role=$2 AND m.status='active'
@@ -710,6 +749,21 @@ func New(opts Options) *fiber.App {
 		}
 		// owner becomes admin member
 		_, _ = opts.DB.Exec(`INSERT INTO school_members (school_id, user_id, role) VALUES ($1,$2,'admin') ON CONFLICT DO NOTHING`, out.ID, uid)
+		// Grant app role schools.owner in Core API for this user (best-effort)
+		go func(cookie string) {
+			defer func() { _ = recover() }()
+			if strings.TrimSpace(opts.CoreAPIBase) == "" {
+				return
+			}
+			payload := map[string]string{"role": "owner"}
+			b, _ := json.Marshal(payload)
+			req, _ := http.NewRequest("POST", strings.TrimRight(opts.CoreAPIBase, "/")+"/v1/apps/schools/roles", bytes.NewReader(b))
+			req.Header.Set("Content-Type", "application/json")
+			if cookie != "" {
+				req.Header.Set("Cookie", cookie)
+			}
+			_, _ = http.DefaultClient.Do(req)
+		}(c.Get("Cookie"))
 		return c.JSON(fiber.Map{"success": true, "data": out})
 	})
 	// --- Classes ---
@@ -10367,12 +10421,20 @@ func New(opts Options) *fiber.App {
 
 	// Homework help (integrity-safe): provide hints/steps, no final answers
 	app.Post("/v1/ai/homework-help", func(c *fiber.Ctx) error {
-		var b struct{ Question string `json:"question"`; Subject string `json:"subject"` }
-		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Question) == "" { return fiber.ErrBadRequest }
+		var b struct {
+			Question string `json:"question"`
+			Subject  string `json:"subject"`
+		}
+		if err := c.BodyParser(&b); err != nil || strings.TrimSpace(b.Question) == "" {
+			return fiber.ErrBadRequest
+		}
 		// guard: block explicit solution requests
 		q := strings.ToLower(b.Question)
 		blocked := []string{"give me the full answer", "solve it fully", "final answer", "exact answer", "write my assignment", "do my homework"}
-		for _, w := range blocked { if strings.Contains(q, w) { return c.Status(400).JSON(fiber.Map{"success": false, "message": "We can guide you with hints and steps, not final answers."}) }
+		for _, w := range blocked {
+			if strings.Contains(q, w) {
+				return c.Status(400).JSON(fiber.Map{"success": false, "message": "We can guide you with hints and steps, not final answers."})
+			}
 		}
 		sub := strings.TrimSpace(b.Subject)
 		sys := "You are a tutor that preserves academic integrity. Provide step-by-step guidance, key concepts, and small hints. Do NOT give final numeric values or full essays. Ask brief check questions."

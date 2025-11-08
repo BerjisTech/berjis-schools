@@ -2,7 +2,7 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterModule } from '@angular/router';
-import { loginUrl, verifySession } from './util';
+import { hasAppRole, loginUrl, verifySession } from './util';
 import { I18nService } from './i18n.service';
 import { PushService } from './services/push.service';
 import { TPipe } from './t.pipe';
@@ -24,6 +24,7 @@ export class AppComponent implements OnInit {
   fontScale = 1; // 1.0x, cycles upward
   isHighContrast = false;
   announce = signal('');
+  isOwner = signal(false);
 
   constructor(private router: Router, private i18n: I18nService, private push: PushService) {}
 
@@ -50,10 +51,14 @@ export class AppComponent implements OnInit {
     });
     try {
       const result = await verifySession({ attemptRefresh: true });
-      this.authed.set(!!result.valid);
-    } catch {
-      this.authed.set(false);
-    }
+      const ok = !!result.valid;
+      this.authed.set(ok);
+      if (ok) {
+        try { this.isOwner.set(await hasAppRole('schools', 'owner')); } catch { this.isOwner.set(false) }
+      } else {
+        this.isOwner.set(false);
+      }
+    } catch { this.authed.set(false); this.isOwner.set(false); }
     await this.i18n.setLang(localStorage.getItem('lang') || 'en');
   }
 

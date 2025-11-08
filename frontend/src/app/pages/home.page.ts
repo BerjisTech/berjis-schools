@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { detectRootDomain, urlFor, loginUrl, verifySession } from '../../app/util';
+import { detectRootDomain, urlFor, loginUrl, verifySession, hasAppRole } from '../../app/util';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null; isEnrolled?: boolean }
@@ -33,6 +33,7 @@ export class HomePage implements OnInit {
   isAdmin = false;
   isTutor = false;
   isStaff = false;
+  isOwner = false;
   tutorActionLabel = 'Become a tutor';
   tutorActionHelper = 'Apply to teach with Berjis.';
   tutorActionHref = '/tutors/become';
@@ -93,13 +94,13 @@ export class HomePage implements OnInit {
   private async loadFeatured() {
     try {
       const res = await fetch(`${urlFor('schools-api')}/v1/schools`, { credentials: 'include' });
-      const j = await res.json();
+      if (!res.ok) { throw new Error('http'); } const j = await res.json();
       const list: School[] = j?.data ?? [];
       this.featuredSchools = list.slice(0, 5);
       try {
         const tRes = await fetch(`${urlFor('schools-api')}/v1/ratings/tutors/top?limit=5`, { credentials: 'include' });
-        const tj = await tRes.json();
-      const tops: Array<{ tutorUserId: string }> = tj?.data ?? [];
+        if (!tRes.ok) { throw new Error('http'); } const tJ = await tRes.json();
+      const tops: Array<{ tutorUserId: string }> = tJ?.data ?? [];
         this.featuredTutors = tops.map(t => t.tutorUserId);
       } catch { this.featuredTutors = ['Top Tutor'] }
       try {
@@ -117,7 +118,7 @@ export class HomePage implements OnInit {
   private async loadDashboard() {
     try {
       const res = await fetch(`${urlFor('schools-api')}/v1/classes`, { credentials: 'include' });
-      const j = await res.json();
+      if (!res.ok) { throw new Error('http'); } const j = await res.json();
       const classes: ClassItem[] = j?.data ?? [];
       const tutors = new Set<string>();
       this.myTutors = [];
@@ -138,14 +139,14 @@ export class HomePage implements OnInit {
 
       try {
         const lpRes = await fetch(`${urlFor('schools-api')}/v1/progress/lessons?status=in_progress`, { credentials: 'include' });
-        const lpJ = await lpRes.json();
+        if (!lpRes.ok) { throw new Error('http'); } const lpJ = await lpRes.json();
         const rows: any[] = lpJ?.data ?? [];
         this.inProgressLessonsCount = rows.length;
       } catch { this.inProgressLessonsCount = 0 }
 
       try {
         const tRes = await fetch(`${urlFor('schools-api')}/v1/tests`, { credentials: 'include' });
-        const tJ = await tRes.json();
+        if (!tRes.ok) { throw new Error('http'); } const tJ = await tRes.json();
         const tests: any[] = tJ?.data ?? [];
         this.recentTests = tests.slice(0, 5).map(t => ({ id: t.id, title: t.title }));
       } catch { this.recentTests = [] }
@@ -153,7 +154,7 @@ export class HomePage implements OnInit {
       // Tutor application status
       try {
         const meRes = await fetch(`${urlFor('schools-api')}/v1/tutors/me`, { credentials: 'include' });
-        const meJ = await meRes.json();
+        if (!meRes.ok) { throw new Error('http'); } const meJ = await meRes.json();
         this.tutorStatus = meJ?.data?.status ?? null;
         this.tutorStatusDisplay = this.tutorStatus ? this.tutorStatus.replace(/_/g, ' ') : 'Not applied yet';
       } catch { this.tutorStatus = null }
@@ -161,6 +162,7 @@ export class HomePage implements OnInit {
       const normalizedStatus = (this.tutorStatus ?? '').toLowerCase();
       this.isAdmin = this.adminSchools.length > 0;
       this.isTutor = ['approved', 'active', 'onboarded'].includes(normalizedStatus) || this.tutorSchools.length > 0;
+      try { this.isOwner = await hasAppRole('schools', 'owner'); } catch { this.isOwner = false }
       this.isStaff = this.isAdmin || this.isTutor;
       if (!this.isStaff) {
         this.mySchools = [];
@@ -189,7 +191,7 @@ export class HomePage implements OnInit {
     try {
       const res = await fetch(`${urlFor('schools-api')}/v1/schools/mine?role=${role}`, { credentials: 'include' });
       if (!res.ok) return [];
-      const j = await res.json();
+      if (!res.ok) { throw new Error('http'); } const j = await res.json();
       return (j?.data ?? []) as School[];
     } catch {
       return [];
@@ -220,8 +222,10 @@ export class HomePage implements OnInit {
     if (this.isStaff) {
       this.primaryActions = [
         { label: 'Teach & curriculum', href: '/courses/mine', icon: 'menu_book' },
-        { label: 'Student management', href: '/schools/staff', icon: 'assignment_ind' },
-        { label: 'Finance workspace', href: '/schools/staff#finance', icon: 'payments' },
+        ...(this.isOwner ? [
+          { label: 'Student management', href: '/schools/staff', icon: 'assignment_ind' },
+          { label: 'Finance workspace', href: '/schools/staff#finance', icon: 'payments' },
+        ] : []),
         { label: 'Family support', href: '/moderation', icon: 'family_restroom' },
         { label: 'Create a school', href: '/schools/create', icon: 'domain_add' },
         tutorAction,
@@ -237,3 +241,5 @@ export class HomePage implements OnInit {
     }
   }
 }
+
+

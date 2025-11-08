@@ -34,16 +34,14 @@ export class SchoolsService {
 
   async listCourses(): Promise<Course[]> {
     const res = await fetch(`${this.api}/v1/classes`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: ClassItemApi[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: ClassItemApi[] = j?.data ?? [];
     return rows.map(this.mapClassToCourse);
   }
 
   async listMyCourses(): Promise<Course[]> {
     const res = await fetch(`${this.api}/v1/classes?mine=1`, { credentials: 'include' });
     if (!res.ok) return [];
-    const j = await res.json();
-    const rows: ClassItemApi[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: ClassItemApi[] = j?.data ?? [];
     return rows.map(this.mapClassToCourse);
   }
 
@@ -97,8 +95,7 @@ export class SchoolsService {
 
   async listSubjects(classId: string): Promise<Subject[]> {
     const res = await fetch(`${this.api}/v1/subjects?class_id=${encodeURIComponent(classId)}`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: SubjectApi[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: SubjectApi[] = j?.data ?? [];
     return rows.map(r => ({ id: r.id, classId: r.classId, title: r.title, description: r.description ?? undefined, orderIndex: r.orderIndex, status: r.status as any }));
   }
 
@@ -112,8 +109,7 @@ export class SchoolsService {
 
   async listLessons(subjectId: string): Promise<Lesson[]> {
     const res = await fetch(`${this.api}/v1/lessons?subject_id=${encodeURIComponent(subjectId)}`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: LessonApi[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: LessonApi[] = j?.data ?? [];
     return rows.map(this.mapLesson);
   }
 
@@ -193,8 +189,7 @@ export class SchoolsService {
     if (filter.subjectId) url.searchParams.set('subject_id', filter.subjectId);
     if (filter.lessonId) url.searchParams.set('lesson_id', filter.lessonId);
     const res = await fetch(url.toString(), { credentials: 'include' });
-    const j = await res.json();
-    const rows: TestApi[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: TestApi[] = j?.data ?? [];
     return rows.map(this.mapTest);
   }
 
@@ -335,8 +330,7 @@ export class SchoolsService {
 
   async listAdminSchools(): Promise<SchoolSummary[]> {
     const res = await fetch(`${this.api}/v1/schools/mine?role=admin`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: any[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: any[] = j?.data ?? [];
     return rows.map(r => ({
       id: r.id,
       name: r.name,
@@ -357,14 +351,12 @@ export class SchoolsService {
 
   async getSchoolMembers(schoolId: string): Promise<Array<{ userId: string; role: string; status: string }>> {
     const res = await fetch(`${this.api}/v1/schools/${schoolId}/members`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async getSchoolInvites(schoolId: string): Promise<SchoolInvite[]> {
     const res = await fetch(`${this.api}/v1/schools/${schoolId}/invites`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: any[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: any[] = j?.data ?? [];
     return rows.map(r => ({
       id: r.id,
       email: r.email ?? undefined,
@@ -670,8 +662,7 @@ export class SchoolsService {
   }
   async listMyFeedback(): Promise<Array<{ id: string; category: string; message: string; context?: string; createdAt: string }>> {
     const res = await fetch(`${this.api}/v1/feedback/mine`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async reportBug(input: { severity: 'low'|'medium'|'high'|'critical'; title: string; details?: string; url?: string }): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/bugs`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -679,8 +670,7 @@ export class SchoolsService {
   }
   async listMyBugs(): Promise<Array<{ id: string; severity: string; title: string; details?: string; url?: string; createdAt: string }>> {
     const res = await fetch(`${this.api}/v1/bugs/mine`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   // SMS: Years & Terms
@@ -719,13 +709,11 @@ export class SchoolsService {
   // SMS: Sections
   async listSections(schoolId: string): Promise<Array<{ id: string; name: string; gradeLevel?: string }>> {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/sections`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async listSchoolStudents(schoolId: string): Promise<Array<{ userId: string; displayName?: string; admissionNo?: string; gradeLevel?: string }>> {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/students`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: any[] = j?.data ?? [];
+    if (!res.ok) return []; const j = await res.json(); const rows: any[] = j?.data ?? [];
     return rows.map(r => ({ userId: r.userId || r.user_id, displayName: r.displayName || r.display_name, admissionNo: r.admissionNo || r.admission_no, gradeLevel: r.gradeLevel || r.grade_level }));
   }
   async createSection(schoolId: string, input: { name: string; gradeLevel?: string }): Promise<{ id?: string } | null> {
@@ -736,8 +724,7 @@ export class SchoolsService {
   }
   async listSectionMembers(sectionId: string): Promise<Array<{ studentUserId: string }>> {
     const res = await fetch(`${this.api}/v1/sections/${encodeURIComponent(sectionId)}/members`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async addSectionMember(sectionId: string, studentUserId: string): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/sections/${encodeURIComponent(sectionId)}/members`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentUserId }) });
@@ -753,16 +740,14 @@ export class SchoolsService {
   // Attendance helpers
   async getClassRoster(classId: string): Promise<Array<{ userId: string; name: string }>> {
     const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/gradebook`, { credentials: 'include' });
-    const j = await res.json();
-    const rows: Array<{ userId: string; name: string }> = (j?.data?.students ?? []).map((s: any) => ({ userId: s.userId, name: s.name || s.userId }));
+    if (!res.ok) return []; const j = await res.json(); const rows: Array<{ userId: string; name: string }> = (j?.data?.students ?? []).map((s: any) => ({ userId: s.userId, name: s.name || s.userId }));
     return rows;
   }
   async getAttendance(classId: string, day?: string): Promise<Array<{ studentUserId: string; status: string; day: string }>> {
     const url = new URL(`${this.api}/v1/classes/${encodeURIComponent(classId)}/attendance`);
     if (day) url.searchParams.set('day', day);
     const res = await fetch(url.toString(), { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async markAttendance(classId: string, day: string, entries: Array<{ studentUserId: string; status: 'present'|'absent'|'late'|'excused' }>): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/attendance/mark`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day, entries }) });
@@ -772,8 +757,7 @@ export class SchoolsService {
   // Class versions
   async listClassVersions(classId: string): Promise<Array<{ id: string; version: number; title: string; description: string; createdAt: string }>> {
     const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/versions`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async createClassVersion(classId: string): Promise<boolean> {
     const res = await fetch(`${this.api}/v1/classes/${encodeURIComponent(classId)}/versions`, { method: 'POST', credentials: 'include' });
@@ -794,8 +778,7 @@ export class SchoolsService {
   // Subscription & plans
   async listPlans(): Promise<Array<{ id: string; key: string; name: string; price: number; currency: string; interval: string }>> {
     const res = await fetch(`${this.api}/v1/billing/plans`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async getSchoolSubscription(schoolId: string): Promise<{ status?: string; plan?: string; periodEnd?: string } | null> {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/subscription`, { credentials: 'include' });
@@ -813,8 +796,7 @@ export class SchoolsService {
   // Financial Management: Invoices
   async listMyInvoices(): Promise<Array<{ id: string; school_id: string; status: string; total_cents: number; currency: string; due_date?: string }>> {
     const res = await fetch(`${this.api}/v1/me/invoices`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async getInvoiceCorePaymentParams(id: string): Promise<{ amount_cents: number; currency: string; description: string } | null> {
@@ -834,8 +816,7 @@ export class SchoolsService {
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.offset) params.set('offset', String(opts.offset));
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/announcements?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async createSchoolAnnouncement(schoolId: string, input: { title: string; body: string; visibility?: 'school'|'public'; pinned?: boolean }): Promise<string | null> {
@@ -850,8 +831,7 @@ export class SchoolsService {
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.offset) params.set('offset', String(opts.offset));
     const res = await fetch(`${this.api}/v1/me/announcements?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   // Events
@@ -862,8 +842,7 @@ export class SchoolsService {
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.offset) params.set('offset', String(opts.offset));
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/events?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async createSchoolEvent(schoolId: string, input: { title: string; description?: string; location?: string; starts_at: string; ends_at?: string; visibility?: 'school'|'public' }): Promise<string | null> {
@@ -911,8 +890,7 @@ export class SchoolsService {
   // Facilities
   async listFacilities(schoolId: string): Promise<Array<{ id: string; name: string; location?: string; capacity?: number }>> {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/facilities`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async createFacility(schoolId: string, input: { name: string; location?: string; capacity?: number; attributes?: Record<string, any> }): Promise<string | null> {
@@ -932,8 +910,7 @@ export class SchoolsService {
     if (opts?.from) params.set('from', opts.from);
     if (opts?.to) params.set('to', opts.to);
     const res = await fetch(`${this.api}/v1/facilities/${encodeURIComponent(id)}/availability?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async bookFacility(id: string, input: { title: string; description?: string; starts_at: string; ends_at: string }): Promise<string | null> {
@@ -946,8 +923,7 @@ export class SchoolsService {
     const params = new URLSearchParams();
     if (opts?.schoolId) params.set('school_id', opts.schoolId);
     const res = await fetch(`${this.api}/v1/me/bookings?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   async cancelBooking(id: string): Promise<boolean> {
@@ -968,8 +944,7 @@ export class SchoolsService {
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.offset) params.set('offset', String(opts.offset));
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/library/books?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async libraryAddCopy(bookId: string, barcode?: string): Promise<string | null> {
     const res = await fetch(`${this.api}/v1/library/books/${encodeURIComponent(bookId)}/copies`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode }) });
@@ -978,8 +953,7 @@ export class SchoolsService {
   }
   async libraryListCopies(bookId: string) {
     const res = await fetch(`${this.api}/v1/library/books/${encodeURIComponent(bookId)}/copies`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async libraryLoanCopy(copyId: string): Promise<{ id: string; due_at: string } | null> {
     const res = await fetch(`${this.api}/v1/library/copies/${encodeURIComponent(copyId)}/loan`, { method: 'POST', credentials: 'include' });
@@ -993,8 +967,7 @@ export class SchoolsService {
   async libraryMyLoans(status: 'active'|'history'='active') {
     const params = new URLSearchParams({ status });
     const res = await fetch(`${this.api}/v1/me/library/loans?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   // Inventory
@@ -1007,8 +980,7 @@ export class SchoolsService {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/inventory/items?${params.toString()}`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async invAdjustStock(itemId: string, change: number, reason?: string, location?: string) {
     const res = await fetch(`${this.api}/v1/inventory/items/${encodeURIComponent(itemId)}/movements`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ change, reason, location }) });
@@ -1016,8 +988,7 @@ export class SchoolsService {
   }
   async invStockByLocation(itemId: string) {
     const res = await fetch(`${this.api}/v1/inventory/items/${encodeURIComponent(itemId)}/stock`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   // Hostel / Boarding
@@ -1033,8 +1004,7 @@ export class SchoolsService {
   }
   async listHostels(schoolId: string) {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/hostels`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async allocateRoom(roomId: string, studentUserId: string) {
     const res = await fetch(`${this.api}/v1/rooms/${encodeURIComponent(roomId)}/allocate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_user_id: studentUserId }) });
@@ -1058,8 +1028,7 @@ export class SchoolsService {
   }
   async transportListRoutes(schoolId: string) {
     const res = await fetch(`${this.api}/v1/schools/${encodeURIComponent(schoolId)}/transport/routes`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async transportAddStop(routeId: string, input: { name: string; lat?: number; lng?: number; order_index?: number }) {
     const res = await fetch(`${this.api}/v1/transport/routes/${encodeURIComponent(routeId)}/stops`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -1076,8 +1045,7 @@ export class SchoolsService {
   }
   async transportManifest(tripId: string) {
     const res = await fetch(`${this.api}/v1/transport/trips/${encodeURIComponent(tripId)}/manifest`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async transportCheckin(tripId: string, student_user_id: string, event: 'pickup'|'dropoff') {
     const res = await fetch(`${this.api}/v1/transport/trips/${encodeURIComponent(tripId)}/checkin`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_user_id, event }) });
@@ -1085,8 +1053,7 @@ export class SchoolsService {
   }
   async myTransportAssignments() {
     const res = await fetch(`${this.api}/v1/me/transport/assignments`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
   async startGroupCall(groupId: string): Promise<{ url: string; roomCode: string } | null> {
     const res = await fetch(`${this.api}/v1/groups/${encodeURIComponent(groupId)}/call/start`, { method: 'POST', credentials: 'include' });
@@ -1180,8 +1147,7 @@ export class SchoolsService {
 
   async listResourceAcl(resourceId: string): Promise<Array<{ id: string; principalType: 'user'|'class'|'group'|'school'; principalId: string; role: 'owner'|'editor'|'commenter'|'viewer'; createdBy?: string; createdAt?: string }>> {
     const res = await fetch(`${this.api}/v1/resources/${encodeURIComponent(resourceId)}/acl`, { credentials: 'include' });
-    const j = await res.json();
-    return (j?.data ?? []) as any[];
+    if (!res.ok) return []; const j = await res.json(); return (j?.data ?? []) as any[];
   }
 
   // --- Search (users by name/email/uid) ---
@@ -1194,3 +1160,7 @@ export class SchoolsService {
     return rows.map(r => ({ userId: r.userId || r.user_id, displayName: r.displayName || r.display_name }));
   }
 }
+
+
+
+
