@@ -19,6 +19,8 @@ import { AppComponent } from './app/app.component';
 import { urlFor } from './app/util';
 import { SearchPage } from './app/pages/search.page';
 import { authGuard } from './app/guards/auth.guard';
+import { schoolsTutorGuard } from './app/guards/tutor.guard';
+import { schoolsModeratorGuard } from './app/guards/moderator.guard';
 import { schoolsOwnerGuard } from './app/guards/owner.guard';
 import { MyCoursesPage } from './app/pages/my-courses.page';
 import { CreateSchoolPage } from './app/pages/create-school.page';
@@ -53,12 +55,12 @@ const routes: Routes = [
   { path: 'schools/staff', loadComponent: () => Promise.resolve(SchoolStaffPage), canActivate: [authGuard, schoolsOwnerGuard] },
   { path: 'tutors/become', redirectTo: 'tutors/become/info', pathMatch: 'full' },
   { path: 'tutors/become/:section', loadComponent: () => Promise.resolve(BecomeTutorPage), canActivate: [authGuard] },
-  { path: 'moderation', loadComponent: () => Promise.resolve(ModerationPage), canActivate: [authGuard] },
-  { path: 'moderation/platform', loadComponent: () => Promise.resolve(PlatformModerationPage), canActivate: [authGuard] },
-  { path: 'moderation/tutors', loadComponent: () => Promise.resolve(TutorReviewPage), canActivate: [authGuard] },
-  { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage), canActivate: [authGuard] },
-  { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage), canActivate: [authGuard] },
-  { path: 'courses/mine', loadComponent: () => Promise.resolve(MyCoursesPage), canActivate: [authGuard] },
+  { path: 'moderation', loadComponent: () => Promise.resolve(ModerationPage), canActivate: [authGuard, schoolsModeratorGuard] },
+  { path: 'moderation/platform', loadComponent: () => Promise.resolve(PlatformModerationPage), canActivate: [authGuard, schoolsModeratorGuard] },
+  { path: 'moderation/tutors', loadComponent: () => Promise.resolve(TutorReviewPage), canActivate: [authGuard, schoolsModeratorGuard] },
+  { path: 'moderation/schools', loadComponent: () => Promise.resolve(SchoolReviewPage), canActivate: [authGuard, schoolsModeratorGuard] },
+  { path: 'course/create', loadComponent: () => Promise.resolve(CreateCoursePage), canActivate: [authGuard, schoolsTutorGuard] },
+  { path: 'courses/mine', loadComponent: () => Promise.resolve(MyCoursesPage), canActivate: [authGuard, schoolsTutorGuard] },
   { path: 'gradebook', loadComponent: () => Promise.resolve(GradebookPage), canActivate: [authGuard] },
   { path: 'transcript', loadComponent: () => Promise.resolve(TranscriptPage), canActivate: [authGuard] },
   { path: 'certificates', loadComponent: () => Promise.resolve(CertificatesPage), canActivate: [authGuard] },

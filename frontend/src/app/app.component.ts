@@ -25,6 +25,7 @@ export class AppComponent implements OnInit {
   isHighContrast = false;
   announce = signal('');
   isOwner = signal(false);
+  isTutor = signal(false);
 
   constructor(private router: Router, private i18n: I18nService, private push: PushService) {}
 
@@ -55,10 +56,17 @@ export class AppComponent implements OnInit {
       this.authed.set(ok);
       if (ok) {
         try { this.isOwner.set(await hasAppRole('schools', 'owner')); } catch { this.isOwner.set(false) }
+        try {
+          const privateTutor = await hasAppRole('schools', 'private_tutor');
+          // lightweight membership probe: any school tutor role
+          const schoolTutor = await (await fetch(`${location.protocol}//schools-api.${(document.location.hostname.match(/(^|\.)berjis\.(test|tech|com)$/i)?.[0] ? document.location.hostname.replace(/^[^.]+\./,'') : 'berjis.tech')}/v1/schools/mine?role=tutor`, { credentials: 'include' })).json().then((j:any)=>Array.isArray(j?.data)&&j.data.length>0).catch(()=>false);
+          this.isTutor.set(!!privateTutor || !!schoolTutor);
+        } catch { this.isTutor.set(false) }
       } else {
         this.isOwner.set(false);
+        this.isTutor.set(false);
       }
-    } catch { this.authed.set(false); this.isOwner.set(false); }
+    } catch { this.authed.set(false); this.isOwner.set(false); this.isTutor.set(false); }
     await this.i18n.setLang(localStorage.getItem('lang') || 'en');
   }
 

@@ -34,7 +34,7 @@
       <a routerLink="/classes" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">auto_stories</span>Courses
       </a>
-      <a routerLink="/courses/mine" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
+      <a *ngIf="isTutor()" routerLink="/courses/mine" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">
         <span class="material-symbols-outlined text-base">dashboard_customize</span>My authored courses
       </a>
       <a routerLink="/subjects" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 text-slate-700" routerLinkActive="bg-indigo-50 text-indigo-700">

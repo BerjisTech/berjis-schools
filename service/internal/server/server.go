@@ -675,6 +675,36 @@ func New(opts Options) *fiber.App {
 		_ = opts.DB.Get(&ok, `SELECT EXISTS (SELECT 1 FROM platform_admins WHERE user_id=$1)`, uid)
 		return ok
 	}
+	// App role checker for current user via Core API
+	hasSchoolsRole := func(c *fiber.Ctx, role string) bool {
+		if strings.TrimSpace(opts.CoreAPIBase) == "" {
+			return false
+		}
+		req, _ := http.NewRequest("GET", strings.TrimRight(opts.CoreAPIBase, "/")+"/v1/apps/schools/roles", nil)
+		if ck := c.Get("Cookie"); ck != "" {
+			req.Header.Set("Cookie", ck)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil || resp == nil {
+			return false
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return false
+		}
+		var out struct {
+			Success bool     `json:"success"`
+			Data    []string `json:"data"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		key := "schools." + strings.TrimSpace(role)
+		for _, r := range out.Data {
+			if r == key || r == role {
+				return true
+			}
+		}
+		return false
+	}
 	// --- Schools ---
 	type school struct {
 		ID          string    `json:"id" db:"id"`
@@ -988,6 +1018,12 @@ func New(opts Options) *fiber.App {
 			okA, _ := auth.IsSchoolAdmin(opts.DB, *in.SchoolID, uid)
 			okT, _ := auth.IsSchoolTutor(opts.DB, *in.SchoolID, uid)
 			if !okA && !okT {
+				return fiber.ErrForbidden
+			}
+		} else {
+			// Independent class: require approved private tutor
+			okPT, _ := auth.IsApprovedPrivateTutor(opts.DB, uid)
+			if !okPT {
 				return fiber.ErrForbidden
 			}
 		}
@@ -3404,7 +3440,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		tid := c.Params("userId")
@@ -3428,7 +3464,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		id := c.Params("id")
@@ -5247,7 +5283,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		status := strings.TrimSpace(strings.ToLower(c.Query("status")))
@@ -5274,7 +5310,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		id := c.Params("id")
@@ -5321,7 +5357,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		id := c.Params("id")
@@ -5354,7 +5390,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		status := c.Query("status", "pending")
@@ -5380,7 +5416,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		tid := c.Params("userId")
@@ -5400,7 +5436,7 @@ func New(opts Options) *fiber.App {
 		if err != nil {
 			return fiber.ErrUnauthorized
 		}
-		if !isPlatformAdmin(uid) {
+		if !isPlatformAdmin(uid) && !hasSchoolsRole(c, "moderator") {
 			return fiber.ErrForbidden
 		}
 		tid := c.Params("userId")

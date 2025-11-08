@@ -82,6 +82,19 @@ export async function hasAppRole(app: string, role: string): Promise<boolean> {
   }
 }
 
+// Check if the user has any school membership for a given role ('tutor'|'admin')
+export async function hasAnySchoolRole(role: 'tutor'|'admin'): Promise<boolean> {
+  try {
+    const res = await fetch(`${urlFor('schools-api')}/v1/schools/mine?role=${encodeURIComponent(role)}`, { credentials: 'include' });
+    if (!res.ok) return false;
+    const json = await res.json();
+    const list: any[] = json?.data ?? [];
+    return Array.isArray(list) && list.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export interface AuthedUserProfile {
   uuid?: string;
   email?: string;
