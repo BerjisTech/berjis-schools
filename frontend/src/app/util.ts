@@ -1,3 +1,26 @@
+import { EnvironmentInjector } from '@angular/core';
+import { CoreAuthService, CoreAuthSession } from '@berjis/angular-auth';
+import { environment } from '../environments/environment';
+
+let appInjector: EnvironmentInjector | null = null;
+let sharedAuth: CoreAuthService | null = null;
+
+function getAuth(): CoreAuthService {
+  if (sharedAuth) {
+    return sharedAuth;
+  }
+  if (!appInjector) {
+    throw new Error('CoreAuthService is not initialized. Call initAuthService() from bootstrap.');
+    }
+  sharedAuth = appInjector.get(CoreAuthService);
+  return sharedAuth;
+}
+
+export function initAuthService(injector: EnvironmentInjector) {
+  appInjector = injector;
+  sharedAuth = injector.get(CoreAuthService);
+}
+
 export function detectRootDomain(hostname: string): string {
   const m = hostname.match(/(^|\.)berjis\.(test|tech|com)$/i);
   if (m) return `berjis.${m[2].toLowerCase()}`;
@@ -6,6 +29,12 @@ export function detectRootDomain(hostname: string): string {
 }
 
 export function urlFor(sub: 'api'|'schools-api'|'schools'|'ai'|'ai-api', proto = window.location.protocol): string {
+  if (sub === 'api' && environment.apiBase) {
+    return environment.apiBase;
+  }
+  if (sub === 'schools-api' && environment.schoolsApiBase) {
+    return environment.schoolsApiBase;
+  }
   const root = detectRootDomain(window.location.hostname);
   const host = sub === 'schools' ? `schools.${root}` : `${sub}.${root}`;
   return `${proto}//${host}`;
@@ -18,58 +47,27 @@ export function loginUrl(returnTo?: string): string {
   return `${base}/auth/login?returnUrl=${ret}`;
 }
 
-async function postJSON(url: string, body: any = {}): Promise<any> {
-  const res = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body ?? {})
-  });
-  if (!res.ok) return null;
+export async function verifySession(opts: { attemptRefresh?: boolean } = {}): Promise<{ valid: boolean; data?: CoreAuthSession }> {
   try {
-    return await res.json();
+    const auth = getAuth();
+    const session = await auth.ensureAuth({ maxAgeMs: 1500, force: !!opts.attemptRefresh });
+    return { valid: session.valid, data: session };
   } catch {
-    return null;
+    return { valid: false };
   }
-}
-
-async function refreshSession(): Promise<boolean> {
-  try {
-    const refreshRes = await postJSON(`${urlFor('api')}/v1/auth/refresh`);
-    return !!refreshRes?.success;
-  } catch {
-    return false;
-  }
-}
-
-export async function verifySession(opts: { attemptRefresh?: boolean } = {}): Promise<{ valid: boolean; data?: any }> {
-  const attemptRefresh = !!opts.attemptRefresh;
-  try {
-    const res = await postJSON(`${urlFor('api')}/v1/auth/verify`);
-    const valid = !!res?.data?.valid;
-    if (valid || !attemptRefresh) {
-      return { valid, data: res?.data };
-    }
-  } catch {
-    if (!attemptRefresh) return { valid: false };
-  }
-
-  if (attemptRefresh) {
-    const refreshed = await refreshSession();
-    if (refreshed) {
-      try {
-        const res = await postJSON(`${urlFor('api')}/v1/auth/verify`);
-        return { valid: !!res?.data?.valid, data: res?.data };
-      } catch {}
-    }
-  }
-  return { valid: false };
 }
 
 // App roles helper: checks if the user has a specific role for an app
 export async function hasAppRole(app: string, role: string): Promise<boolean> {
+  try {
+    const auth = getAuth();
+    const session = await auth.ensureAuth({ maxAgeMs: 1500 });
+    if (session.valid && sessionHasAppRole(session, app, role)) {
+      return true;
+    }
+  } catch {
+    // ignore and fall back to remote probe
+  }
   try {
     const res = await fetch(`${urlFor('api')}/v1/apps/${encodeURIComponent(app)}/roles`, { credentials: 'include' });
     if (!res.ok) return false;
@@ -123,4 +121,19 @@ export async function fetchUserProfile(opts: { force?: boolean } = {}): Promise<
     }
   })();
   return cachedUserProfilePromise;
+}
+
+function sessionHasAppRole(session: CoreAuthSession, app: string, role: string): boolean {
+  const normalized = role;
+  const prefixed = `${app}.${role}`;
+  const underscore = `${app}_${role}`;
+  const direct = session.appRoles?.[app] ?? [];
+  if (direct.some(r => r === normalized || r === prefixed || r === underscore)) {
+    return true;
+  }
+  const allRoles = new Set<string>([
+    ...session.roles,
+    ...session.platformRoles,
+  ]);
+  return allRoles.has(normalized) || allRoles.has(prefixed) || allRoles.has(underscore);
 }

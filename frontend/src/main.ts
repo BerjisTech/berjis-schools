@@ -1,4 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
+import { provideHttpClient } from '@angular/common/http';
+import { ENVIRONMENT_INITIALIZER, EnvironmentInjector, inject } from '@angular/core';
 import { Routes, provideRouter } from '@angular/router';
 import { HomePage } from './app/pages/home.page';
 import { ClassesPage } from './app/pages/classes.page';
@@ -41,6 +43,9 @@ import { YearsTermsPage } from './app/pages/years-terms.page';
 import { SectionsPage } from './app/pages/sections.page';
 import { ClassAttendancePage } from './app/pages/class-attendance.page';
 import { StudyToolsPage } from './app/pages/study-tools.page';
+import { CORE_AUTH_API_BASE } from '@berjis/angular-auth';
+import { environment } from './environments/environment';
+import { initAuthService } from './app/util';
 
 interface School { id: string; name: string; description?: string | null }
 interface ClassItem { id: string; title: string; tutorUserId: string; schoolId?: string | null }
@@ -84,7 +89,21 @@ const routes: Routes = [
   { path: 'search', loadComponent: () => Promise.resolve(SearchPage) },
 ];
 
-bootstrapApplication(AppComponent, { providers: [provideRouter(routes)] }).catch(err => console.error(err));
+bootstrapApplication(AppComponent, {
+  providers: [
+    provideRouter(routes),
+    provideHttpClient(),
+    { provide: CORE_AUTH_API_BASE, useValue: environment.apiBase },
+    {
+      provide: ENVIRONMENT_INITIALIZER,
+      multi: true,
+      useFactory: () => {
+        const injector = inject(EnvironmentInjector);
+        return () => initAuthService(injector);
+      }
+    }
+  ]
+}).catch(err => console.error(err));
 
 // Basic client error tracking to Schools API
 try {

@@ -473,8 +473,12 @@ export class SchoolsService {
       const result = await verifySession({ attemptRefresh: true });
       const data = result?.data;
       let uid: string | null = null;
-      if (data?.uid != null) uid = String(data.uid);
-      if (data?.userId) uid = data.userId;
+      if (data?.uuid) uid = data.uuid;
+      if (!uid) {
+        const profileId = typeof data?.profile?.uuid === 'string' ? data.profile.uuid : undefined;
+        const profileUser = typeof data?.profile?.userId === 'string' ? data.profile.userId : undefined;
+        uid = profileId || profileUser || null;
+      }
       if (uid && uid.trim().length === 0) uid = null;
       this.currentUserIdCache = uid;
       return uid;

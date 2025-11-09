@@ -4,6 +4,7 @@ go 1.22.0
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
+	github.com/berjistech/berjis-ecosystem/shared/coreauth v0.0.0
 	github.com/gofiber/fiber/v2 v2.52.4
 	github.com/google/uuid v1.5.0
 	github.com/jackc/pgx/v5 v5.7.4
@@ -37,3 +38,5 @@ require (
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
+
+replace github.com/berjistech/berjis-ecosystem/shared/coreauth => ../../shared/coreauth

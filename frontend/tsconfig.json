@@ -2,6 +2,23 @@
   "compileOnSave": false,
   "compilerOptions": {
     "baseUrl": "./",
+    "paths": {
+      "@berjis/angular-auth": [
+        "../../clients/angular-auth/src/index.ts"
+      ],
+      "@angular/*": [
+        "./node_modules/@angular/*"
+      ],
+      "rxjs": [
+        "./node_modules/rxjs"
+      ],
+      "rxjs/*": [
+        "./node_modules/rxjs/*"
+      ],
+      "tslib": [
+        "./node_modules/tslib/tslib.d.ts"
+      ]
+    },
     "outDir": "./dist/out-tsc",
     "sourceMap": true,
     "declaration": false,
